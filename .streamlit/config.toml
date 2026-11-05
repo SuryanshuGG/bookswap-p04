@@ -1,6 +1,6 @@
 [theme]
-# BookSwap colours: deep green, warm off-white, white cards (same as the design canvas)
-primaryColor = "#0F5C4A"
-backgroundColor = "#F6F4EF"
-secondaryBackgroundColor = "#F1EEE7"
-textColor = "#1B1D21"
+# BookSwap colours from Swasti's BS-24 design: mint green, light grey fields
+primaryColor = "#57CFA4"
+backgroundColor = "#E9EEF3"
+secondaryBackgroundColor = "#F4F4F4"
+textColor = "#111111"
