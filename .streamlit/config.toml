@@ -1,0 +1,6 @@
+[theme]
+# Colours from Swasti's BS-24 design
+primaryColor = "#57CFA4"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F4F6"
+textColor = "#1F1F1F"
