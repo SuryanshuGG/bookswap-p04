@@ -4,7 +4,7 @@ XIME Bangalore, PGDM Agile project, Group 2 / Team 3.
 
 BookSwap lets students list, find and request books from each other on campus.
 
-**Live app:** _added after the first deployment on Streamlit Community Cloud_
+**Live app:** https://bookswap-p04-atuq2z9hmqnqmnc3rvgxzt.streamlit.app/
 
 ## Team
 
