@@ -65,6 +65,9 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 [data-testid="stWidgetLabel"] p {{ font-weight: 700; font-size: 14.5px; color: {INK}; }}
 [data-baseweb="input"], [data-baseweb="select"] > div {{ border-radius: 10px !important; background: {FIELD} !important; border-color: transparent !important; }}
 [data-testid="stForm"] {{ border: 0; padding: 0; }}
+/* Search box on the book list */
+.st-key-search [data-baseweb="input"] {{ background: #FFFFFF !important; border-radius: 14px !important; min-height: 52px; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
+.st-key-search input {{ font-size: 15.5px; padding-left: 14px; }}
 
 /* Tabs on the sign-in page: a grey pill bar with the chosen tab in white */
 .stTabs [role="tablist"] {{ gap: 6px; background: #E4E9EF; padding: 5px; border-radius: 14px; border: 0 !important; box-shadow: none !important; }}
@@ -133,6 +136,16 @@ def hero_html(total: int, counts: dict) -> str:
 def section_title_html(title: str, note: str = "") -> str:
     extra = f"<span style='font-size:14px;color:{MUTED};font-weight:500;margin-left:10px'>{html.escape(note)}</span>" if note else ""
     return f"<div style='font-size:20px;font-weight:800;color:{INK};margin:4px 0 12px'>{html.escape(title)}{extra}</div>"
+
+
+def empty_state_html(message: str) -> str:
+    """Shown when a search finds no books (P04-US03, acceptance criterion 2)."""
+    return (
+        f"<div style='background:#FFFFFF;border-radius:18px;padding:36px 24px;text-align:center'>"
+        f"<div style='width:56px;height:56px;border-radius:16px;background:{MINT_SOFT};margin:0 auto 14px;"
+        f"display:flex;align-items:center;justify-content:center'>{BOOK_ICON}</div>"
+        f"<div style='font-size:16px;font-weight:700;color:{INK};max-width:420px;margin:0 auto'>{html.escape(message)}</div></div>"
+    )
 
 
 # ---------- Covers ----------

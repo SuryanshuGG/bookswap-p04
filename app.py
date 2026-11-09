@@ -10,8 +10,9 @@ BS-55: new students can sign up with their name and college email.
 import streamlit as st
 
 from bookswap.data import load_books
+from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
-    PAGE_CSS, brand_html, card_html, cover_html, details_html, hero_html,
+    PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, hero_html,
     section_title_html, user_badge_html, welcome_panel_html,
 )
 from bookswap.users import add_user, check_sign_up, is_permanent, load_users
@@ -110,12 +111,25 @@ def browse_page() -> None:
         st.success(f"Welcome to BookSwap, {st.session_state['user']}! Your account is ready.")
     books = load_books()
     st.markdown(hero_html(len(books), books["Exchange Type"].value_counts().to_dict()), unsafe_allow_html=True)
-    st.markdown(section_title_html("All books", f"{len(books)} listed"), unsafe_allow_html=True)
+
+    # Search by title or author (BS-27, story P04-US03)
+    query = st.text_input(
+        "Search books", placeholder="Search by title or author, e.g. Kotler or Habits",
+        key="search", label_visibility="collapsed",
+    )
+    shown = search_books(books, query)
+    if query.strip():
+        st.markdown(section_title_html(f'Results for "{query.strip()}"', f"{len(shown)} found"), unsafe_allow_html=True)
+    else:
+        st.markdown(section_title_html("All books", f"{len(books)} listed"), unsafe_allow_html=True)
+    if shown.empty:
+        st.markdown(empty_state_html(NO_MATCH_MESSAGE), unsafe_allow_html=True)
+        return
 
     per_row = 4
-    for start in range(0, len(books), per_row):
+    for start in range(0, len(shown), per_row):
         columns = st.columns(per_row, gap="medium")
-        for column, (_, book) in zip(columns, books.iloc[start:start + per_row].iterrows()):
+        for column, (_, book) in zip(columns, shown.iloc[start:start + per_row].iterrows()):
             with column:
                 with st.container(border=True, key=f"card_{book['Book ID']}"):
                     st.markdown(card_html(book), unsafe_allow_html=True)
