@@ -25,6 +25,7 @@ BookSwap lets students list, find and request books from each other on campus.
 | BS-5 | P04-US01 Load 40 sample book listings: sign in, book list with cover and title, placeholder for missing covers, book details | Done |
 | BS-55 | Sign-up for new students with name and college email (saved to the Google Sheet) | In review |
 | BS-27 | P04-US03 Search books by title or author, with a wishlist message when nothing matches | In review |
+| BS-25 | P04-US02 List a book with photo, condition and exchange type; saved under the owner as Available | In review |
 
 ## Run it on your own computer
 
@@ -39,6 +40,7 @@ BookSwap lets students list, find and request books from each other on campus.
 - `bookswap/ui.py`: the book card and cover image
 - `bookswap/users.py`: who can sign in, and sign-up for new students
 - `bookswap/search.py`: search by title or author
+- `bookswap/listings.py`: the listing rules, and reading and saving books
 - `tests/`: automatic checks (run `python -m pytest tests`)
 - `data/BookSwap_40_Books.xlsx`: the 40 sample books, users and lists
 - `docs/ai-usage-log.md`: what was written with AI help, task by task
