@@ -23,7 +23,7 @@ BookSwap lets students list, find and request books from each other on campus.
 | Jira | Story | Status |
 |---|---|---|
 | BS-5 | P04-US01 Load 40 sample book listings: sign in, book list with cover and title, placeholder for missing covers, book details | Done |
-| BS-55 | Sign-up for new students with name and college email (saved to the Google Sheet) | Done |
+| BS-55 | Sign-up for new students with name and college email (saved to the Google Sheet) | In review |
 | BS-27 | P04-US03 Search books by title or author, with a wishlist message when nothing matches | In review |
 
 ## Run it on your own computer
