@@ -46,6 +46,8 @@ PAGE_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Inter', system-ui, sans-serif !important; }}
+/* Keep Streamlit's icon font for its icons (upload, close, help) */
+[data-testid="stIconMaterial"], .material-symbols-rounded, [class*="material-symbols"] {{ font-family: 'Material Symbols Rounded' !important; }}
 .stApp {{ background: {PAGE}; }}
 /* Hide Streamlit's own toolbar, menu, footer and sidebar */
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu, footer {{ display: none !important; }}
@@ -65,6 +67,15 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 [data-testid="stWidgetLabel"] p {{ font-weight: 700; font-size: 14.5px; color: {INK}; }}
 [data-baseweb="input"], [data-baseweb="select"] > div {{ border-radius: 10px !important; background: {FIELD} !important; border-color: transparent !important; }}
 [data-testid="stForm"] {{ border: 0; padding: 0; }}
+/* List a book page */
+.st-key-listing_card {{ background: #FFFFFF; border-radius: 22px; padding: 24px 22px !important; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
+.st-key-submit_listing button {{ background: {MINT} !important; border: 0 !important; min-height: 52px; font-size: 16px !important; margin-top: 8px; }}
+.st-key-submit_listing button:hover {{ background: #45BF93 !important; }}
+.st-key-nav_list button {{ background: {MINT}; border: 0; }}
+.st-key-nav_list button:hover {{ background: #45BF93; }}
+[data-testid="stFileUploaderDropzone"] {{ background: {MINT_SOFT}; border: 1.5px dashed #9FD9C3; border-radius: 14px; }}
+[data-testid="stButtonGroup"] button {{ border-radius: 999px !important; min-height: 42px; padding: 0 18px; }}
+[data-testid="stButtonGroup"] button[aria-checked="true"], [data-testid="stButtonGroup"] button[kind*="Active"] {{ background: {MINT} !important; color: {INK} !important; border-color: {MINT} !important; }}
 /* Search box on the book list */
 .st-key-search [data-baseweb="input"] {{ background: #FFFFFF !important; border-radius: 14px !important; min-height: 52px; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
 .st-key-search input {{ font-size: 15.5px; padding-left: 14px; }}
@@ -138,6 +149,32 @@ def section_title_html(title: str, note: str = "") -> str:
     return f"<div style='font-size:20px;font-weight:800;color:{INK};margin:4px 0 12px'>{html.escape(title)}{extra}</div>"
 
 
+def field_error_html(message: str) -> str:
+    """Red message under a form field (BS-24 design)."""
+    return f"<div style='color:#B42318;font-size:13.5px;font-weight:500;margin:-8px 0 10px'>{html.escape(message)}</div>"
+
+
+def listed_html(book: pd.Series) -> str:
+    """Success screen after listing a book (P04-US02, acceptance criteria 1, 2 and 5)."""
+    tick = ("<svg width='30' height='30' viewBox='0 0 24 24' fill='none' stroke='#111111' stroke-width='2.6' "
+            "stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg>")
+    return f"""
+<div style="background:#FFFFFF;border-radius:24px;padding:32px 24px;text-align:center;margin-top:18px">
+  <div style="width:72px;height:72px;border-radius:50%;background:{MINT};margin:0 auto 16px;display:flex;align-items:center;justify-content:center">{tick}</div>
+  <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:{INK}">Your book is listed!</div>
+  <div style="font-size:15px;color:{MUTED};margin:6px 0 20px">Other students can now find it and send you a request.</div>
+  <div style="display:flex;gap:14px;text-align:left;background:{FIELD};border-radius:16px;padding:14px">
+    <div style="width:84px;flex:none">{cover_html(book, max_width=84, radius=8)}</div>
+    <div style="min-width:0">
+      <div style="font-weight:700;font-size:16px;color:{INK}">{html.escape(str(book["Title"]))}</div>
+      <div style="font-size:13.5px;color:{MUTED};margin:2px 0 8px">{html.escape(str(book["Author"]))}</div>
+      <div>{exchange_chip(book)}<span class="bs-chip" style="background:#FFFFFF;color:#333333">{html.escape(str(book["Condition"]))}</span></div>
+      <div style="font-size:13px;font-weight:600;color:{GREEN};margin-top:6px">● Available · Listed by {html.escape(str(book["Owner Name"]))}</div>
+    </div>
+  </div>
+</div>"""
+
+
 def empty_state_html(message: str) -> str:
     """Shown when a search finds no books (P04-US03, acceptance criterion 2)."""
     return (
@@ -177,7 +214,8 @@ def cover_html(book: pd.Series, max_width: int = 400, radius: int = 14) -> str:
     placeholder = "data:image/svg+xml;base64," + base64.b64encode(_placeholder_svg(book).encode()).decode()
     link = str(book.get("Cover Image Link") or "").strip()
     layers, sizes = f"url('{placeholder}')", "cover"
-    if link.lower().startswith(("http://", "https://")):
+    # A web link, or a photo a student uploaded when listing the book (BS-25)
+    if link.lower().startswith(("http://", "https://", "data:image/jpeg;base64,", "data:image/png;base64,")):
         layers = f"url('{html.escape(link, quote=True)}'), {layers}"
         sizes = "cover, cover"
     return (

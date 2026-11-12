@@ -5,15 +5,18 @@ Run locally with:  streamlit run app.py
 BS-5 (P04-US01): sign in with the Users sheet, see every book with its cover
 and title, and open a book to see all its details.
 BS-55: new students can sign up with their name and college email.
+BS-27 (P04-US03): search books by title or author.
+BS-25 (P04-US02): list a book with photo, condition and exchange type.
 """
 
 import streamlit as st
 
-from bookswap.data import load_books
+from bookswap import listings
+from bookswap.listings import load_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
-    PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, hero_html,
-    section_title_html, user_badge_html, welcome_panel_html,
+    PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
+    hero_html, listed_html, section_title_html, user_badge_html, welcome_panel_html,
 )
 from bookswap.users import add_user, check_sign_up, is_permanent, load_users
 
@@ -93,20 +96,32 @@ def show_details(book) -> None:
 
 # ---------- Browse books (US01, acceptance criteria 1, 2 and 4) ----------
 
+def go_to(page: str) -> None:
+    st.session_state["page"] = page
+    st.rerun()
+
+
 def top_bar() -> None:
-    left, right, button = st.columns([6, 3, 1], vertical_alignment="center")
+    left, browse, list_book, right, button = st.columns([4, 1.5, 1.6, 2.4, 1.2], vertical_alignment="center")
     with left:
         st.markdown(brand_html(), unsafe_allow_html=True)
+    with browse:
+        if st.button("Browse books", key="nav_browse", use_container_width=True):
+            go_to("browse")
+    with list_book:
+        if st.button("+ List a book", key="nav_list", use_container_width=True):
+            st.session_state.pop("just_listed", None)
+            go_to("list")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
     with button:
         if st.button("Sign out", use_container_width=True):
-            del st.session_state["user"]
+            for key in ("user", "page", "just_listed", "listing_errors"):
+                st.session_state.pop(key, None)
             st.rerun()
 
 
 def browse_page() -> None:
-    top_bar()
     if st.session_state.pop("welcome", False):
         st.success(f"Welcome to BookSwap, {st.session_state['user']}! Your account is ready.")
     books = load_books()
@@ -137,9 +152,122 @@ def browse_page() -> None:
                         show_details(book)
 
 
+# ---------- List a book (BS-25, story P04-US02) ----------
+
+FORM_KEYS = ["lb_title", "lb_author", "lb_course", "lb_genre", "lb_condition", "lb_exchange", "lb_price"]
+
+
+def clear_listing_form() -> None:
+    for key in FORM_KEYS + ["listing_errors"]:
+        st.session_state.pop(key, None)
+    # A new key gives an empty photo picker
+    st.session_state["photo_key"] = st.session_state.get("photo_key", 0) + 1
+
+
+def list_book_page() -> None:
+    owner = st.session_state["user"]
+    if "just_listed" in st.session_state:
+        listed_page(st.session_state["just_listed"])
+        return
+    errors = st.session_state.get("listing_errors", {})
+    choices = listings.load_choices()
+
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown(
+            "<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 2px'>List a book</div>"
+            f"<div style='font-size:14.5px;color:#5F6368;margin-bottom:14px'>Listing as <b style='color:#1E6B52'>{owner}</b></div>",
+            unsafe_allow_html=True,
+        )
+        if not listings.is_permanent():
+            st.caption("Test mode: new listings are kept only until the app restarts.")
+        if errors:
+            st.error("Please fill the highlighted fields to list your book.")
+        with st.container(key="listing_card"):
+            st.text_input("Book title *", placeholder="e.g. Marketing Management", key="lb_title")
+            field_error(errors, "title")
+            st.text_input("Author *", placeholder="e.g. Philip Kotler", key="lb_author")
+            field_error(errors, "author")
+            course_col, genre_col = st.columns(2)
+            with course_col:
+                st.selectbox("Course *", choices["course"], index=None, placeholder="Select course", key="lb_course")
+                field_error(errors, "course")
+            with genre_col:
+                st.selectbox("Genre *", choices["genre"], index=None, placeholder="Select genre", key="lb_genre")
+                field_error(errors, "genre")
+            photo = st.file_uploader(
+                "Book photo *", type=["jpg", "jpeg", "png"], key=f"lb_photo_{st.session_state.get('photo_key', 0)}",
+                help="Tap to add a photo (JPG or PNG)",
+            )
+            if photo is None:
+                st.caption("Tap Upload to add a photo of the book (JPG or PNG).")
+            field_error(errors, "photo")
+            st.segmented_control("Condition *", listings.CONDITIONS, key="lb_condition")
+            field_error(errors, "condition")
+            exchange = st.segmented_control("Exchange type *", listings.EXCHANGE_TYPES, key="lb_exchange")
+            field_error(errors, "exchange")
+            if exchange == "Sell":
+                st.number_input("Price (₹) *", min_value=0, step=10, value=None, placeholder="e.g. 250", key="lb_price")
+                field_error(errors, "price")
+            else:
+                st.caption("Price appears only when you choose Sell.")
+            if st.button("Submit listing", key="submit_listing", use_container_width=True):
+                submit_listing(owner, photo)
+
+
+def field_error(errors: dict, field: str) -> None:
+    if field in errors:
+        st.markdown(field_error_html(errors[field]), unsafe_allow_html=True)
+
+
+def submit_listing(owner: str, photo) -> None:
+    state = st.session_state
+    values = {
+        "title": state.get("lb_title"), "author": state.get("lb_author"),
+        "course": state.get("lb_course"), "genre": state.get("lb_genre"),
+        "photo": photo.getvalue() if photo is not None else None,
+        "condition": state.get("lb_condition"), "exchange": state.get("lb_exchange"),
+        "price": state.get("lb_price"),
+    }
+    errors = listings.check_listing(values)
+    if errors:
+        state["listing_errors"] = errors
+        st.rerun()
+    book_id = listings.next_book_id(load_books())
+    row = listings.make_book_row(values, owner, book_id, listings.photo_to_data_uri(values["photo"]))
+    listings.save_listing(row)
+    clear_listing_form()
+    state["just_listed"] = book_id
+    st.rerun()
+
+
+def listed_page(book_id: str) -> None:
+    books = load_books()
+    match = books[books["Book ID"] == book_id]
+    _, middle, _ = st.columns([1, 2, 1])
+    with middle:
+        if match.empty:
+            st.success("Your book is listed!")
+        else:
+            st.markdown(listed_html(match.iloc[0]), unsafe_allow_html=True)
+        back, another = st.columns(2)
+        with back:
+            if st.button("Back to books", key="back_to_books", use_container_width=True):
+                st.session_state.pop("just_listed", None)
+                go_to("browse")
+        with another:
+            if st.button("List another book", key="list_another", use_container_width=True):
+                st.session_state.pop("just_listed", None)
+                go_to("list")
+
+
 # ---------- Page flow ----------
 
 if "user" not in st.session_state:
     sign_in_page()
 else:
-    browse_page()
+    top_bar()
+    if st.session_state.get("page") == "list":
+        list_book_page()
+    else:
+        browse_page()
