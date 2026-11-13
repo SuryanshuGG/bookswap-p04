@@ -7,12 +7,14 @@ and title, and open a book to see all its details.
 BS-55: new students can sign up with their name and college email.
 BS-27 (P04-US03): search books by title or author.
 BS-25 (P04-US02): list a book with photo, condition and exchange type.
+BS-30 (P04-US04): filter books by course and genre, alone or with search.
 """
 
 import streamlit as st
 
 from bookswap import listings
 from bookswap.listings import load_books
+from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
@@ -121,6 +123,12 @@ def top_bar() -> None:
             st.rerun()
 
 
+def clear_filters() -> None:
+    """Clear button: the full book list returns (acceptance criterion 5)."""
+    st.session_state["f_course"] = None
+    st.session_state["f_genre"] = None
+
+
 def browse_page() -> None:
     if st.session_state.pop("welcome", False):
         st.success(f"Welcome to BookSwap, {st.session_state['user']}! Your account is ready.")
@@ -132,13 +140,26 @@ def browse_page() -> None:
         "Search books", placeholder="Search by title or author, e.g. Kotler or Habits",
         key="search", label_visibility="collapsed",
     )
-    shown = search_books(books, query)
-    if query.strip():
-        st.markdown(section_title_html(f'Results for "{query.strip()}"', f"{len(shown)} found"), unsafe_allow_html=True)
+    # Filter by course and genre (BS-30, story P04-US04)
+    choices = listings.load_choices()
+    course_col, genre_col, clear_col = st.columns([2, 2, 1], vertical_alignment="bottom")
+    with course_col:
+        course = st.selectbox("Course", choices["course"], index=None, placeholder="All courses", key="f_course")
+    with genre_col:
+        genre = st.selectbox("Genre", choices["genre"], index=None, placeholder="All genres", key="f_genre")
+    with clear_col:
+        st.button("Clear filters", key="clear_filters", on_click=clear_filters,
+                  disabled=not (course or genre), use_container_width=True)
+
+    shown = filter_books(search_books(books, query), course, genre)
+    if query.strip() or course or genre:
+        label = " · ".join(part for part in (f'"{query.strip()}"' if query.strip() else "", course, genre) if part)
+        st.markdown(section_title_html(f"Results for {label}", f"{len(shown)} found"), unsafe_allow_html=True)
     else:
         st.markdown(section_title_html("All books", f"{len(books)} listed"), unsafe_allow_html=True)
     if shown.empty:
-        st.markdown(empty_state_html(NO_MATCH_MESSAGE), unsafe_allow_html=True)
+        message = NO_MATCH_MESSAGE if query.strip() and not (course or genre) else NO_FILTER_MATCH_MESSAGE
+        st.markdown(empty_state_html(message), unsafe_allow_html=True)
         return
 
     per_row = 4
