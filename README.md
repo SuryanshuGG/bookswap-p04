@@ -27,7 +27,7 @@ BookSwap lets students list, find and request books from each other on campus.
 | BS-27 | P04-US03 Search books by title or author, with a wishlist message when nothing matches | Done |
 | BS-28 | Search tested: TC05-TC08 all passed (`docs/testing/BS-28_Search_Test_Results.xlsx`) | Done |
 | BS-25 | P04-US02 List a book with photo, condition and exchange type; saved under the owner as Available | Done |
-| BS-30 | P04-US04 Filter books by course and genre, alone, together or with search; Clear filters; no-match message | In review |
+| BS-30 | P04-US04 Filter books by course, genre and exchange type (Swap, Lend, Sell), alone, together or with search; Clear filters; no-match message | In review |
 
 ## Run it on your own computer
 

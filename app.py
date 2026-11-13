@@ -127,6 +127,7 @@ def clear_filters() -> None:
     """Clear button: the full book list returns (acceptance criterion 5)."""
     st.session_state["f_course"] = None
     st.session_state["f_genre"] = None
+    st.session_state["f_exchange"] = None
 
 
 def browse_page() -> None:
@@ -142,23 +143,26 @@ def browse_page() -> None:
     )
     # Filter by course and genre (BS-30, story P04-US04)
     choices = listings.load_choices()
-    course_col, genre_col, clear_col = st.columns([2, 2, 1], vertical_alignment="bottom")
+    course_col, genre_col, exchange_col, clear_col = st.columns([2, 2, 1.4, 1], vertical_alignment="bottom")
     with course_col:
         course = st.selectbox("Course", choices["course"], index=None, placeholder="All courses", key="f_course")
     with genre_col:
         genre = st.selectbox("Genre", choices["genre"], index=None, placeholder="All genres", key="f_genre")
+    with exchange_col:
+        exchange = st.selectbox("Exchange type", listings.EXCHANGE_TYPES, index=None,
+                                placeholder="Swap, Lend or Sell", key="f_exchange")
     with clear_col:
         st.button("Clear filters", key="clear_filters", on_click=clear_filters,
-                  disabled=not (course or genre), use_container_width=True)
+                  disabled=not (course or genre or exchange), use_container_width=True)
 
-    shown = filter_books(search_books(books, query), course, genre)
-    if query.strip() or course or genre:
-        label = " · ".join(part for part in (f'"{query.strip()}"' if query.strip() else "", course, genre) if part)
+    shown = filter_books(search_books(books, query), course, genre, exchange)
+    if query.strip() or course or genre or exchange:
+        label = " · ".join(part for part in (f'"{query.strip()}"' if query.strip() else "", course, genre, exchange) if part)
         st.markdown(section_title_html(f"Results for {label}", f"{len(shown)} found"), unsafe_allow_html=True)
     else:
         st.markdown(section_title_html("All books", f"{len(books)} listed"), unsafe_allow_html=True)
     if shown.empty:
-        message = NO_MATCH_MESSAGE if query.strip() and not (course or genre) else NO_FILTER_MATCH_MESSAGE
+        message = NO_MATCH_MESSAGE if query.strip() and not (course or genre or exchange) else NO_FILTER_MATCH_MESSAGE
         st.markdown(empty_state_html(message), unsafe_allow_html=True)
         return
 

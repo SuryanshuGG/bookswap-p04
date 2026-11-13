@@ -2,14 +2,15 @@
 
 import pandas as pd
 
-NO_FILTER_MATCH_MESSAGE = "No books found for this course and genre. Try another filter or clear them."
+NO_FILTER_MATCH_MESSAGE = "No books found for these filters. Try another filter or clear them."
 
 
-def filter_books(books: pd.DataFrame, course=None, genre=None) -> pd.DataFrame:
+def filter_books(books: pd.DataFrame, course=None, genre=None, exchange=None) -> pd.DataFrame:
     """Books that match every filter that is set.
 
     - Course only: books tagged with that course (acceptance criterion 1).
     - Course and genre: books that match both (criterion 2).
+    - Swap, Lend or Sell: books with that exchange type (criterion 6).
     - No filter set: every book (criterion 5).
     """
     shown = books
@@ -17,6 +18,8 @@ def filter_books(books: pd.DataFrame, course=None, genre=None) -> pd.DataFrame:
         shown = shown[shown["Course"].astype(str) == str(course)]
     if genre:
         shown = shown[shown["Genre"].astype(str) == str(genre)]
+    if exchange:
+        shown = shown[shown["Exchange Type"].astype(str) == str(exchange)]
     return shown
 
 

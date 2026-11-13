@@ -39,3 +39,16 @@ def test_filters_work_with_search():
     shown = filter_books(search_books(BOOKS, "the"), course="Marketing")
     assert (shown["Course"] == "Marketing").all()
     assert shown["Title"].str.lower().str.contains("the").any() or shown["Author"].str.lower().str.contains("the").any()
+
+
+def test_exchange_type_only_shows_that_type():
+    for kind in ("Swap", "Lend", "Sell"):
+        shown = filter_books(BOOKS, exchange=kind)
+        assert len(shown) > 0
+        assert (shown["Exchange Type"] == kind).all()
+
+
+def test_exchange_type_works_with_course():
+    shown = filter_books(BOOKS, course="Finance", exchange="Sell")
+    assert len(shown) >= 1
+    assert (shown["Course"] == "Finance").all() and (shown["Exchange Type"] == "Sell").all()
