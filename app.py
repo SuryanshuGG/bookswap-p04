@@ -7,18 +7,21 @@ and title, and open a book to see all its details.
 BS-55: new students can sign up with their name and college email.
 BS-27 (P04-US03): search books by title or author.
 BS-25 (P04-US02): list a book with photo, condition and exchange type.
-BS-30 (P04-US04): filter books by course and genre, alone or with search.
+BS-30 (P04-US04): filter books by course, genre and exchange type, alone or with search.
+BS-31 (P04-US05): request a book; swap offers, pay-at-handover note, My Requests.
 """
 
 import streamlit as st
 
 from bookswap import listings
+from bookswap import requests as book_requests
 from bookswap.listings import load_books
 from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
-    hero_html, listed_html, section_title_html, user_badge_html, welcome_panel_html,
+    hero_html, listed_html, note_html, request_label_html, request_row_html, request_sent_html,
+    section_title_html, user_badge_html, welcome_panel_html,
 )
 from bookswap.users import add_user, check_sign_up, is_permanent, load_users
 
@@ -94,6 +97,113 @@ def show_details(book) -> None:
         st.markdown(cover_html(book, max_width=280, radius=16), unsafe_allow_html=True)
     with right:
         st.markdown(details_html(book), unsafe_allow_html=True)
+        request_section(book)
+
+
+# ---------- Request a book (BS-31, story P04-US05) ----------
+
+def request_section(book) -> None:
+    """The Request button and its four states from Swasti's BS-32 design."""
+    user = st.session_state["user"]
+    requests = book_requests.load_requests()
+    state = book_requests.request_state(book, user, requests)
+    if state == "own":
+        st.markdown(request_label_html("This is your book", book_requests.MESSAGES["own"], mint=True), unsafe_allow_html=True)
+        return
+    if state == "unavailable":
+        st.markdown(request_label_html("Not available", book_requests.MESSAGES["unavailable"]), unsafe_allow_html=True)
+        return
+    if state == "requested":
+        st.markdown(request_label_html("✓ Requested", book_requests.MESSAGES["requested"]), unsafe_allow_html=True)
+        return
+
+    offered = None
+    if book["Exchange Type"] == "Swap":
+        offer = book_requests.books_to_offer(load_books(), user)
+        if offer.empty:
+            st.markdown(request_label_html("List a book to swap", book_requests.MESSAGES["no_books_to_offer"]), unsafe_allow_html=True)
+            if st.button("+ List a book", key="swap_list_first", use_container_width=True):
+                st.session_state.pop("just_listed", None)
+                go_to("list")
+            return
+        titles = dict(zip(offer["Book ID"], offer["Title"]))
+        offered = st.selectbox("Book you offer in return *", list(titles), index=None,
+                               format_func=lambda bid: titles[bid], placeholder="Choose one of your books",
+                               key=f"offer_{book['Book ID']}")
+    elif book["Exchange Type"] == "Sell":
+        st.markdown(note_html(book_requests.pay_note(book)), unsafe_allow_html=True)
+
+    if st.button("Request this book", key="request_book", use_container_width=True):
+        books = load_books()
+        error = book_requests.check_request(book, user, book_requests.load_requests(), books, offered)
+        if error:
+            st.error(error)
+            return
+        request_id = book_requests.next_request_id(book_requests.load_requests())
+        book_requests.save_request(book_requests.make_request_row(request_id, book["Book ID"], user, offered))
+        st.session_state["just_requested"] = request_id
+        st.session_state["page"] = "requests"
+        st.rerun()
+
+
+def request_extra(row) -> str:
+    """Swap offer or payment line shown under a request."""
+    if row.get("Exchange Type") == "Swap" and row.get("Offered Book ID"):
+        books = load_books()
+        match = books[books["Book ID"] == row["Offered Book ID"]]
+        title = match.iloc[0]["Title"] if not match.empty else row["Offered Book ID"]
+        return f"You offer: {title}"
+    if row.get("Exchange Type") == "Sell":
+        return book_requests.pay_note(row)
+    return ""
+
+
+def request_sent_page(request_id: str) -> None:
+    mine = book_requests.my_requests(book_requests.load_requests(), load_books(), st.session_state["user"])
+    match = mine[mine["Request ID"] == request_id]
+    _, middle, _ = st.columns([1, 2, 1])
+    with middle:
+        if match.empty:
+            st.success("Request sent!")
+        else:
+            row = match.iloc[0]
+            st.markdown(request_sent_html(row, row["Owner Name"], request_extra(row)), unsafe_allow_html=True)
+        view, back = st.columns(2)
+        with view:
+            if st.button("View My Requests", key="view_my_requests", use_container_width=True):
+                st.session_state.pop("just_requested", None)
+                go_to("requests")
+        with back:
+            if st.button("Back to books", key="sent_back", use_container_width=True):
+                st.session_state.pop("just_requested", None)
+                go_to("browse")
+
+
+def my_requests_page() -> None:
+    if "just_requested" in st.session_state:
+        request_sent_page(st.session_state["just_requested"])
+        return
+    mine = book_requests.my_requests(book_requests.load_requests(), load_books(), st.session_state["user"])
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown(
+            "<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 14px'>My Requests</div>",
+            unsafe_allow_html=True,
+        )
+        if not book_requests.is_permanent():
+            st.caption("Test mode: requests are kept only until the app restarts.")
+        if mine.empty:
+            st.markdown(empty_state_html("You haven't requested any books yet."), unsafe_allow_html=True)
+            if st.button("Browse books", key="empty_browse", use_container_width=True):
+                go_to("browse")
+            return
+        tabs = [f"All ({len(mine)})", "Pending", "Accepted", "Declined"]
+        choice = st.segmented_control("Show", tabs, default=tabs[0], key="req_tab", label_visibility="collapsed")
+        shown = mine if not choice or choice.startswith("All") else mine[mine["Status"] == choice]
+        if shown.empty:
+            st.markdown(empty_state_html(f"No {choice.lower()} requests."), unsafe_allow_html=True)
+        for _, row in shown.iterrows():
+            st.markdown(request_row_html(row, request_extra(row)), unsafe_allow_html=True)
 
 
 # ---------- Browse books (US01, acceptance criteria 1, 2 and 4) ----------
@@ -104,7 +214,7 @@ def go_to(page: str) -> None:
 
 
 def top_bar() -> None:
-    left, browse, list_book, right, button = st.columns([4, 1.5, 1.6, 2.4, 1.2], vertical_alignment="center")
+    left, browse, list_book, my_req, right, button = st.columns([3, 1.5, 1.6, 1.6, 2.2, 1.2], vertical_alignment="center")
     with left:
         st.markdown(brand_html(), unsafe_allow_html=True)
     with browse:
@@ -114,11 +224,15 @@ def top_bar() -> None:
         if st.button("+ List a book", key="nav_list", use_container_width=True):
             st.session_state.pop("just_listed", None)
             go_to("list")
+    with my_req:
+        if st.button("My Requests", key="nav_requests", use_container_width=True):
+            st.session_state.pop("just_requested", None)
+            go_to("requests")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
     with button:
         if st.button("Sign out", use_container_width=True):
-            for key in ("user", "page", "just_listed", "listing_errors"):
+            for key in ("user", "page", "just_listed", "listing_errors", "just_requested", "req_tab"):
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -292,7 +406,10 @@ if "user" not in st.session_state:
     sign_in_page()
 else:
     top_bar()
-    if st.session_state.get("page") == "list":
+    page = st.session_state.get("page")
+    if page == "list":
         list_book_page()
+    elif page == "requests":
+        my_requests_page()
     else:
         browse_page()

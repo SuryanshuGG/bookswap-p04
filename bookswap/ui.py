@@ -71,8 +71,8 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 .st-key-listing_card {{ background: #FFFFFF; border-radius: 22px; padding: 24px 22px !important; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
 .st-key-submit_listing button {{ background: {MINT} !important; border: 0 !important; min-height: 52px; font-size: 16px !important; margin-top: 8px; }}
 .st-key-submit_listing button:hover {{ background: #45BF93 !important; }}
-.st-key-nav_list button {{ background: {MINT}; border: 0; }}
-.st-key-nav_list button:hover {{ background: #45BF93; }}
+.st-key-nav_list button, .st-key-request_book button, .st-key-view_my_requests button {{ background: {MINT}; border: 0; }}
+.st-key-nav_list button:hover, .st-key-request_book button:hover, .st-key-view_my_requests button:hover {{ background: #45BF93; }}
 [data-testid="stFileUploaderDropzone"] {{ background: {MINT_SOFT}; border: 1.5px dashed #9FD9C3; border-radius: 14px; }}
 [data-testid="stButtonGroup"] button {{ border-radius: 999px !important; min-height: 42px; padding: 0 18px; }}
 [data-testid="stButtonGroup"] button[aria-checked="true"], [data-testid="stButtonGroup"] button[kind*="Active"] {{ background: {MINT} !important; color: {INK} !important; border-color: {MINT} !important; }}
@@ -309,4 +309,81 @@ def welcome_panel_html(total: int) -> str:
   <div class="bs-panel-title" style="font-size:34px;font-weight:800;letter-spacing:-0.9px;line-height:1.12;color:{INK};margin-top:34px">Books for every course, from students on campus.</div>
   {items}
   <div style="margin-top:28px;font-size:14px;font-weight:600;color:#1F2A26">{total} books listed right now</div>
+</div>"""
+
+
+# ---------- Requests (BS-31, story P04-US05; layout from Swasti's BS-32 design) ----------
+
+REQUEST_STATUS_STYLES = {
+    "Pending": ("#FFF1D6", "#8A5300"),
+    "Accepted": ("#E3F7EF", "#1E6B52"),
+    "Declined": ("#FDE8E8", "#B42318"),
+}
+
+
+def request_status_chip(status: str) -> str:
+    bg, fg = REQUEST_STATUS_STYLES.get(status, REQUEST_STATUS_STYLES["Pending"])
+    return f"<span class='bs-chip' style='background:{bg};color:{fg}'>● {html.escape(status)}</span>"
+
+
+def request_label_html(label: str, message: str, mint: bool = False) -> str:
+    """BS-32 states B, C and D: a label in place of the Request button, with the reason."""
+    bg, fg = (MINT_SOFT, GREEN) if mint else (FIELD, MUTED)
+    return (
+        f"<div style='background:{bg};color:{fg};border-radius:12px;text-align:center;padding:12px 0;"
+        f"font-size:15px;font-weight:700;margin-top:14px'>{html.escape(label)}</div>"
+        f"<div style='font-size:13.5px;color:{MUTED};text-align:center;margin-top:8px'>{html.escape(message)}</div>"
+    )
+
+
+def note_html(text: str) -> str:
+    """A short note box, e.g. the pay-at-handover line for Sell books."""
+    return (
+        f"<div style='background:{MINT_SOFT};color:{GREEN};border-radius:12px;padding:10px 12px;"
+        f"font-size:13.5px;font-weight:600;margin-top:12px'>{html.escape(text)}</div>"
+    )
+
+
+def request_sent_html(book: pd.Series, owner: str, extra: str = "") -> str:
+    """BS-32 screen 2: Request sent!"""
+    tick = ("<svg width='30' height='30' viewBox='0 0 24 24' fill='none' stroke='#111111' stroke-width='2.6' "
+            "stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg>")
+    extra_html = f"<div style='font-size:13px;color:{GREEN};font-weight:600;margin-top:6px'>{html.escape(extra)}</div>" if extra else ""
+    return f"""
+<div style="background:#FFFFFF;border-radius:24px;padding:32px 24px;text-align:center;margin-top:18px">
+  <div style="width:72px;height:72px;border-radius:50%;background:{MINT};margin:0 auto 16px;display:flex;align-items:center;justify-content:center">{tick}</div>
+  <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:{INK}">Request sent!</div>
+  <div style="font-size:15px;color:{MUTED};margin:6px 0 20px;line-height:1.5">{html.escape(owner)} will see your request for<br><b style="color:{INK}">{html.escape(str(book["Title"]))}</b>. You'll find it in My Requests.</div>
+  <div style="display:flex;gap:14px;text-align:left;background:{FIELD};border-radius:16px;padding:14px;align-items:center">
+    <div style="width:64px;flex:none">{cover_html(book, max_width=64, radius=7)}</div>
+    <div style="min-width:0">
+      <div style="font-weight:700;font-size:16px;color:{INK}">{html.escape(str(book["Title"]))}</div>
+      <div style="font-size:13px;color:{MUTED};margin:2px 0 8px">Requested today</div>
+      <div>{request_status_chip("Pending")}</div>
+      {extra_html}
+    </div>
+  </div>
+</div>"""
+
+
+def request_row_html(row: pd.Series, extra: str = "") -> str:
+    """One row in My Requests (BS-32 screen 3)."""
+    when = pd.to_datetime(row["Request Date"], errors="coerce")
+    when_text = when.strftime("%-d %b") if pd.notna(when) else str(row["Request Date"])
+    note = ""
+    if row["Status"] == "Accepted":
+        note = f"Collect it from {row['Owner Name']}."
+    extra_html = "".join(
+        f"<div style='font-size:12.5px;color:{GREEN};font-weight:600;margin-top:4px'>{html.escape(t)}</div>"
+        for t in (extra, note) if t
+    )
+    return f"""
+<div style="display:flex;gap:14px;align-items:center;background:#FFFFFF;border-radius:16px;padding:12px 14px;margin-bottom:10px">
+  <div style="width:52px;flex:none">{cover_html(row, max_width=52, radius=7)}</div>
+  <div style="min-width:0;flex:1">
+    <div style="font-weight:700;font-size:15.5px;color:{INK}">{html.escape(str(row["Title"]))}</div>
+    <div style="font-size:12.5px;color:{MUTED};margin:2px 0 6px">Owner: {html.escape(str(row["Owner Name"]))} · {html.escape(str(row["Exchange Type"]))} · {when_text}</div>
+    <div>{request_status_chip(str(row["Status"]))}</div>
+    {extra_html}
+  </div>
 </div>"""
