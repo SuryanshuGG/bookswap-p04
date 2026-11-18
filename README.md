@@ -59,3 +59,7 @@ BookSwap lets students list, find and request books from each other on campus.
 - Every branch, commit and pull request starts with its Jira key, for example `BS-5 Show book list with cover and title`.
 - A builder reviews and merges every pull request.
 - No passwords or keys in this repo. They go in Streamlit's secrets settings (see `.streamlit/secrets.toml.example`).
+
+## Credits
+
+- Title page photo: [Tom Hermans on Unsplash](https://unsplash.com/photos/book-lot-on-table-9BoqXzEeQqM), free to use under the Unsplash License.

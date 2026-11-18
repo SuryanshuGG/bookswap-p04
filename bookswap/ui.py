@@ -7,6 +7,7 @@ light grey fields, bold black labels, rounded shapes and the Inter font.
 import base64
 import html
 import textwrap
+from pathlib import Path
 
 import pandas as pd
 
@@ -105,6 +106,8 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 
 @media (max-width: 640px) {{
   .bs-panel {{ min-height: 0 !important; padding: 22px 20px !important; }}
+  .bs-title-inner {{ padding: 24px 22px 30px !important; }}
+  .bs-title-headline {{ font-size: 30px !important; margin-top: 30px !important; }}
   .bs-panel-title {{ font-size: 24px !important; margin-top: 18px !important; }}
   .block-container {{ padding: 1rem 1rem 2.5rem; }}
 }}
@@ -424,4 +427,49 @@ def owner_request_html(row: pd.Series, extra: str = "") -> str:
     <div style="margin-top:4px">{request_status_chip(str(row["Status"]))}</div>
     {extra_html}
   </div>
+</div>"""
+
+
+# ---------- Title page (sign-in page hero) ----------
+
+HERO_PHOTO = Path(__file__).resolve().parent.parent / "assets" / "hero_books.jpg"
+HERO_CREDIT = ("Photo: Tom Hermans on Unsplash", "https://unsplash.com/photos/book-lot-on-table-9BoqXzEeQqM")
+
+
+def _hero_photo_uri() -> str:
+    try:
+        return "data:image/jpeg;base64," + base64.b64encode(HERO_PHOTO.read_bytes()).decode()
+    except OSError:
+        return ""
+
+
+def title_hero_html(total: int, counts: dict) -> str:
+    """Full-width title banner with a book photo, shown above Welcome / Sign in."""
+    photo = _hero_photo_uri()
+    background = (f"linear-gradient(90deg, rgba(17,17,17,.82) 0%, rgba(17,17,17,.62) 45%, rgba(17,17,17,.15) 100%), url('{photo}')"
+                  if photo else f"linear-gradient(90deg, {GREEN}, {MINT})")
+    chips = "".join(
+        f"<span class='bs-chip' style='background:{MINT};color:{INK};padding:7px 14px;font-size:13.5px'>"
+        f"<b>{counts.get(k, 0)}</b>&nbsp;{k}</span>"
+        for k in ("Swap", "Lend", "Sell")
+    )
+    credit, credit_link = HERO_CREDIT
+    return f"""
+<div class="bs-title-hero" style="position:relative;border-radius:28px;overflow:hidden;margin:6px 0 26px;
+     background:{background};background-size:cover;background-position:center 60%;">
+  <div class="bs-title-inner" style="padding:34px 40px 40px;max-width:640px">
+    {brand_html(24, mark='#FFFFFF').replace(f'color:{INK}', 'color:#FFFFFF')}
+    <div class="bs-title-headline" style="font-size:46px;font-weight:800;letter-spacing:-1.4px;line-height:1.06;color:#FFFFFF;margin-top:54px">
+      Books for every course, from students on campus.</div>
+    <div style="font-size:17px;color:#E9EEEC;margin:14px 0 22px;line-height:1.5;max-width:520px">
+      Swap a book you've finished, borrow one for the term, or buy second-hand at student prices.</div>
+    <div>{chips}</div>
+    <div style="margin-top:26px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <a href="#welcome" target="_self" style="background:#FFFFFF;color:{INK};text-decoration:none;font-weight:700;font-size:15px;
+         padding:12px 22px;border-radius:12px">Sign in or join ↓</a>
+      <span style="color:#E9EEEC;font-size:14px;font-weight:600">{total} books listed right now</span>
+    </div>
+  </div>
+  <a href="{credit_link}" target="_blank" rel="noopener" style="position:absolute;right:16px;bottom:12px;font-size:11.5px;
+     color:rgba(255,255,255,.8);text-decoration:none">{html.escape(credit)}</a>
 </div>"""
