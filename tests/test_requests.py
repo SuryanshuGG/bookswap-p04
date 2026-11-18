@@ -33,7 +33,7 @@ def test_available_book_can_be_requested_and_starts_pending():
     assert request_state(LEND, "Krishna", EMPTY) == "available"
     assert check_request(LEND, "Krishna", EMPTY, BOOKS) is None
     row = make_request_row("RQ-001", "BK-009", "Krishna", today=date(2026, 11, 15))
-    assert row == ["RQ-001", "BK-009", "Krishna", "2026-11-15", "Pending", ""]
+    assert row == ["RQ-001", "BK-009", "Krishna", "2026-11-15", "Pending", "", "", ""]
 
 
 def test_second_request_is_blocked():

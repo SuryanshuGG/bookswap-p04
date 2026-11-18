@@ -9,8 +9,12 @@ BS-27 (P04-US03): search books by title or author.
 BS-25 (P04-US02): list a book with photo, condition and exchange type.
 BS-30 (P04-US04): filter books by course, genre and exchange type, alone or with search.
 BS-31 (P04-US05): request a book; swap offers, pay-at-handover note, My Requests.
+BS-36 and BS-56 (P04-US07): My Listings with Accept and Decline, return dates, badges, edit, pause and delete.
 """
 
+from datetime import date, timedelta
+
+import pandas as pd
 import streamlit as st
 
 from bookswap import listings
@@ -20,7 +24,7 @@ from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
-    hero_html, listed_html, note_html, request_label_html, request_row_html, request_sent_html,
+    hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
     section_title_html, user_badge_html, welcome_panel_html,
 )
 from bookswap.users import add_user, check_sign_up, is_permanent, load_users
@@ -146,8 +150,16 @@ def request_section(book) -> None:
         st.rerun()
 
 
+def offered_title(offered_id: str) -> str:
+    books = load_books()
+    match = books[books["Book ID"] == offered_id]
+    return match.iloc[0]["Title"] if not match.empty else offered_id
+
+
 def request_extra(row) -> str:
-    """Swap offer or payment line shown under a request."""
+    """Swap offer, payment line or return date shown under a request."""
+    if row.get("Return Date"):
+        return f"Return by {pd.to_datetime(row['Return Date']).strftime('%-d %b %Y')}"
     if row.get("Exchange Type") == "Swap" and row.get("Offered Book ID"):
         books = load_books()
         match = books[books["Book ID"] == row["Offered Book ID"]]
@@ -177,6 +189,15 @@ def request_sent_page(request_id: str) -> None:
             if st.button("Back to books", key="sent_back", use_container_width=True):
                 st.session_state.pop("just_requested", None)
                 go_to("browse")
+
+
+def mark_requests_seen() -> None:
+    """Opening My Requests clears its badge (US07 criterion 8). Runs before the top bar is drawn."""
+    user = st.session_state["user"]
+    requests = book_requests.load_requests()
+    unseen = requests[(requests["Requester Name"].str.lower() == user.lower())
+                      & requests["Status"].isin(["Accepted", "Declined"]) & (requests["Seen By Requester"] != "yes")]
+    book_requests.update_requests({rid: {"Seen By Requester": "yes"} for rid in unseen["Request ID"]})
 
 
 def my_requests_page() -> None:
@@ -214,7 +235,12 @@ def go_to(page: str) -> None:
 
 
 def top_bar() -> None:
-    left, browse, list_book, my_req, right, button = st.columns([3, 1.5, 1.6, 1.6, 2.2, 1.2], vertical_alignment="center")
+    user = st.session_state["user"]
+    requests, books = book_requests.load_requests(), load_books()
+    owner_count = book_requests.owner_badge(requests, books, user)
+    requester_count = book_requests.requester_badge(requests, user)
+    left, browse, list_book, my_list, my_req, right, button = st.columns(
+        [2.4, 1.4, 1.5, 1.6, 1.6, 2.0, 1.1], vertical_alignment="center")
     with left:
         st.markdown(brand_html(), unsafe_allow_html=True)
     with browse:
@@ -224,15 +250,22 @@ def top_bar() -> None:
         if st.button("+ List a book", key="nav_list", use_container_width=True):
             st.session_state.pop("just_listed", None)
             go_to("list")
+    with my_list:
+        # Badge: new requests on my books (US07 criterion 8)
+        label = f"My Listings ({owner_count})" if owner_count else "My Listings"
+        if st.button(label, key="nav_listings", use_container_width=True):
+            go_to("listings")
     with my_req:
-        if st.button("My Requests", key="nav_requests", use_container_width=True):
+        # Badge: my requests accepted or declined since I last looked (US07 criterion 8)
+        label = f"My Requests ({requester_count})" if requester_count else "My Requests"
+        if st.button(label, key="nav_requests", use_container_width=True):
             st.session_state.pop("just_requested", None)
             go_to("requests")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
     with button:
         if st.button("Sign out", use_container_width=True):
-            for key in ("user", "page", "just_listed", "listing_errors", "just_requested", "req_tab"):
+            for key in ("user", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message"):
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -244,10 +277,126 @@ def clear_filters() -> None:
     st.session_state["f_exchange"] = None
 
 
+# ---------- My Listings (BS-36 and BS-56, story P04-US07) ----------
+
+def owner_extra(row) -> str:
+    if row.get("Exchange Type") == "Swap" and row.get("Offered Book ID"):
+        return f"Offers in return: {offered_title(row['Offered Book ID'])}"
+    if row.get("Exchange Type") == "Sell":
+        return book_requests.collect_note(row)
+    if row.get("Return Date"):
+        return f"Return by {pd.to_datetime(row['Return Date']).strftime('%-d %b %Y')}"
+    return ""
+
+
+def answer(request_id: str, accept: bool, return_date=None) -> None:
+    requests, books = book_requests.load_requests(), load_books()
+    error, request_changes, book_changes = book_requests.plan_answer(
+        requests, books, request_id, st.session_state["user"], accept, return_date)
+    if error:
+        st.session_state["listing_message"] = ("error", error)
+        return
+    book_requests.update_requests(request_changes)
+    if book_changes:
+        book_id = requests[requests["Request ID"] == request_id].iloc[0]["Book ID"]
+        listings.update_book(book_id, book_changes)
+    st.session_state["listing_message"] = ("success", "Request accepted. The book is now Reserved." if accept else "Request declined.")
+
+
+def my_listings_page() -> None:
+    user = st.session_state["user"]
+    books = load_books()
+    mine = books[(books["Owner Name"].str.lower() == user.lower()) & (books["Status"] != "Deleted")]
+    on_mine = book_requests.requests_for_owner(book_requests.load_requests(), books, user)
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown("<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 14px'>My Listings</div>",
+                    unsafe_allow_html=True)
+        kind, text = st.session_state.pop("listing_message", (None, None))
+        if kind == "error":
+            st.error(text)
+        elif kind == "success":
+            st.success(text)
+        if mine.empty:
+            st.markdown(empty_state_html("You haven't listed any books yet."), unsafe_allow_html=True)
+            if st.button("+ List a book", key="empty_list", use_container_width=True):
+                go_to("list")
+            return
+        for _, book in mine.iterrows():
+            book_id = book["Book ID"]
+            book_requests_here = on_mine[on_mine["Book ID"] == book_id] if not on_mine.empty else on_mine
+            pending = book_requests_here[book_requests_here["Status"] == "Pending"] if not book_requests_here.empty else book_requests_here
+            with st.container(key=f"mylisting_{book_id}"):
+                st.markdown(listing_header_html(book, len(pending)), unsafe_allow_html=True)
+                # Requests on this book: Accept or Decline (BS-36)
+                for _, req in book_requests_here.iterrows():
+                    st.markdown(owner_request_html(req, owner_extra(req)), unsafe_allow_html=True)
+                    if req["Status"] != "Pending":
+                        continue
+                    rid = req["Request ID"]
+                    return_date = None
+                    if book["Exchange Type"] == "Lend":
+                        return_date = st.date_input(
+                            "Return date *", value=date.today() + timedelta(days=14), min_value=date.today() + timedelta(days=1),
+                            max_value=date.today() + timedelta(days=book_requests.MAX_LEND_DAYS), key=f"return_{rid}",
+                            format="DD/MM/YYYY")
+                    yes, no = st.columns(2)
+                    with yes:
+                        st.button("Accept", key=f"accept_{rid}", use_container_width=True,
+                                  on_click=answer, args=(rid, True, return_date))
+                    with no:
+                        st.button("Decline", key=f"decline_{rid}", use_container_width=True,
+                                  on_click=answer, args=(rid, False))
+                # Edit, pause or delete the listing (BS-56)
+                has_pending = not pending.empty
+                if book["Status"] in ("Available", "Paused"):
+                    with st.expander("Edit listing"):
+                        condition = st.selectbox("Condition", listings.CONDITIONS,
+                                                 index=listings.CONDITIONS.index(book["Condition"]) if book["Condition"] in listings.CONDITIONS else 0,
+                                                 key=f"edit_cond_{book_id}")
+                        kind_choice = st.selectbox("Exchange type", listings.EXCHANGE_TYPES,
+                                                   index=listings.EXCHANGE_TYPES.index(book["Exchange Type"]), key=f"edit_type_{book_id}")
+                        price = None
+                        if kind_choice == "Sell":
+                            current = book["Price (Rs)"]
+                            price = st.number_input("Price (₹)", min_value=0, step=10,
+                                                    value=int(current) if pd.notna(current) and str(current) != "" else 0,
+                                                    key=f"edit_price_{book_id}")
+                        if st.button("Save changes", key=f"save_{book_id}", use_container_width=True):
+                            errors = listings.check_edit(book, user, condition, kind_choice, price)
+                            if errors:
+                                st.error(" ".join(errors.values()))
+                            else:
+                                listings.update_book(book_id, listings.edit_changes(condition, kind_choice, price))
+                                st.session_state["listing_message"] = ("success", f"Saved changes to {book['Title']}.")
+                                st.rerun()
+                    pause_col, delete_col = st.columns(2)
+                    with pause_col:
+                        label = "Resume listing" if book["Status"] == "Paused" else "Pause listing"
+                        if st.button(label, key=f"pause_{book_id}", use_container_width=True):
+                            error, changes = listings.pause_change(book, user, has_pending)
+                            if error:
+                                st.session_state["listing_message"] = ("error", error)
+                            else:
+                                listings.update_book(book_id, changes)
+                                st.session_state["listing_message"] = (
+                                    "success", f"{book['Title']} is {'hidden from browsing' if changes['Status'] == 'Paused' else 'listed again'}.")
+                            st.rerun()
+                    with delete_col:
+                        if st.button("Delete listing", key=f"delete_{book_id}", use_container_width=True):
+                            error, changes = listings.delete_change(book, user, has_pending)
+                            if error:
+                                st.session_state["listing_message"] = ("error", error)
+                            else:
+                                listings.update_book(book_id, changes)
+                                st.session_state["listing_message"] = ("success", f"Deleted {book['Title']}.")
+                            st.rerun()
+
+
 def browse_page() -> None:
     if st.session_state.pop("welcome", False):
         st.success(f"Welcome to BookSwap, {st.session_state['user']}! Your account is ready.")
-    books = load_books()
+    books = listings.visible_books(load_books())
     st.markdown(hero_html(len(books), books["Exchange Type"].value_counts().to_dict()), unsafe_allow_html=True)
 
     # Search by title or author (BS-27, story P04-US03)
@@ -405,11 +554,15 @@ def listed_page(book_id: str) -> None:
 if "user" not in st.session_state:
     sign_in_page()
 else:
+    if st.session_state.get("page") == "requests" and "just_requested" not in st.session_state:
+        mark_requests_seen()
     top_bar()
     page = st.session_state.get("page")
     if page == "list":
         list_book_page()
     elif page == "requests":
         my_requests_page()
+    elif page == "listings":
+        my_listings_page()
     else:
         browse_page()

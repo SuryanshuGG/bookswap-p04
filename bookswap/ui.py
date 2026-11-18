@@ -34,6 +34,7 @@ STATUS_STYLES = {
     "Available": ("#E3F7EF", "#1E6B52"),
     "Reserved": ("#FFF1D6", "#8A5300"),
     "Exchanged": ("#ECEDEF", "#4A4F57"),
+    "Paused": ("#ECEDEF", "#4A4F57"),
 }
 
 BOOK_ICON = (
@@ -67,11 +68,13 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 [data-testid="stWidgetLabel"] p {{ font-weight: 700; font-size: 14.5px; color: {INK}; }}
 [data-baseweb="input"], [data-baseweb="select"] > div {{ border-radius: 10px !important; background: {FIELD} !important; border-color: transparent !important; }}
 [data-testid="stForm"] {{ border: 0; padding: 0; }}
+/* My Listings */
+[class*='st-key-mylisting_'] {{ background: #FFFFFF; border-radius: 20px; padding: 18px 18px !important; margin-bottom: 14px; }}
 /* List a book page */
 .st-key-listing_card {{ background: #FFFFFF; border-radius: 22px; padding: 24px 22px !important; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
 .st-key-submit_listing button {{ background: {MINT} !important; border: 0 !important; min-height: 52px; font-size: 16px !important; margin-top: 8px; }}
 .st-key-submit_listing button:hover {{ background: #45BF93 !important; }}
-.st-key-nav_list button, .st-key-request_book button, .st-key-view_my_requests button {{ background: {MINT}; border: 0; }}
+.st-key-nav_list button, .st-key-request_book button, .st-key-view_my_requests button, [class*='st-key-accept_'] button {{ background: {MINT}; border: 0; }}
 .st-key-nav_list button:hover, .st-key-request_book button:hover, .st-key-view_my_requests button:hover {{ background: #45BF93; }}
 [data-testid="stFileUploaderDropzone"] {{ background: {MINT_SOFT}; border: 1.5px dashed #9FD9C3; border-radius: 14px; }}
 [data-testid="stButtonGroup"] button {{ border-radius: 999px !important; min-height: 42px; padding: 0 18px; }}
@@ -384,6 +387,41 @@ def request_row_html(row: pd.Series, extra: str = "") -> str:
     <div style="font-weight:700;font-size:15.5px;color:{INK}">{html.escape(str(row["Title"]))}</div>
     <div style="font-size:12.5px;color:{MUTED};margin:2px 0 6px">Owner: {html.escape(str(row["Owner Name"]))} · {html.escape(str(row["Exchange Type"]))} · {when_text}</div>
     <div>{request_status_chip(str(row["Status"]))}</div>
+    {extra_html}
+  </div>
+</div>"""
+
+
+
+# ---------- My Listings (BS-36 and BS-56, story P04-US07) ----------
+
+def listing_header_html(book: pd.Series, pending: int) -> str:
+    """One of my books on My Listings: cover, title, labels and how many requests wait."""
+    waiting = (f"<span class='bs-chip' style='background:#FFF1D6;color:#8A5300'>{pending} new request{'s' if pending != 1 else ''}</span>"
+               if pending else "")
+    return f"""
+<div style="display:flex;gap:14px;align-items:center">
+  <div style="width:58px;flex:none">{cover_html(book, max_width=58, radius=8)}</div>
+  <div style="min-width:0">
+    <div style="font-weight:800;font-size:16.5px;color:{INK}">{html.escape(str(book["Title"]))}</div>
+    <div style="font-size:13px;color:{MUTED};margin:2px 0 8px">{html.escape(str(book["Author"]))} · {html.escape(str(book["Condition"]))}</div>
+    <div>{exchange_chip(book)}{status_chip(str(book["Status"]))}{waiting}</div>
+  </div>
+</div>"""
+
+
+def owner_request_html(row: pd.Series, extra: str = "") -> str:
+    """A request on one of my books, as the owner sees it."""
+    when = pd.to_datetime(row["Request Date"], errors="coerce")
+    when_text = when.strftime("%-d %b") if pd.notna(when) else str(row["Request Date"])
+    initial = html.escape(str(row["Requester Name"])[:1].upper())
+    extra_html = f"<div style='font-size:13px;color:{GREEN};font-weight:600;margin-top:4px'>{html.escape(extra)}</div>" if extra else ""
+    return f"""
+<div style="display:flex;gap:12px;align-items:center;background:{FIELD};border-radius:14px;padding:10px 12px;margin-top:10px">
+  <span style="width:34px;height:34px;flex:none;border-radius:50%;background:{MINT_SOFT};color:{GREEN};font-weight:700;display:flex;align-items:center;justify-content:center">{initial}</span>
+  <div style="min-width:0;flex:1">
+    <div style="font-size:14.5px;color:{INK}"><b>{html.escape(str(row["Requester Name"]))}</b> requested this book · {when_text}</div>
+    <div style="margin-top:4px">{request_status_chip(str(row["Status"]))}</div>
     {extra_html}
   </div>
 </div>"""

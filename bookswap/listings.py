@@ -159,6 +159,15 @@ def clean_books(rows: pd.DataFrame) -> pd.DataFrame:
     return rows.reset_index(drop=True)
 
 
+@st.cache_resource(show_spinner=False)
+def _temporary_changes() -> dict:
+    """Changes to books (status, edits) kept in memory when there is no Google Sheet."""
+    return {}
+
+
+HIDDEN_STATUSES = ("Paused", "Deleted")  # not shown when browsing (BS-56)
+
+
 def load_books() -> pd.DataFrame:
     """Every listed book: the Google Sheet if connected, else the Excel plus any test listings."""
     worksheet = _worksheet_or_none()
@@ -168,7 +177,29 @@ def load_books() -> pd.DataFrame:
     extra = _temporary_listings()
     if extra:
         books = pd.concat([books, clean_books(pd.DataFrame(extra, columns=BOOK_COLUMNS))], ignore_index=True)
+    changes = _temporary_changes()
+    for book_id, fields in changes.items():
+        for column, value in fields.items():
+            books.loc[books["Book ID"] == book_id, column] = value
     return books
+
+
+def visible_books(books: pd.DataFrame) -> pd.DataFrame:
+    """Books other students can browse: paused and deleted listings are hidden (BS-56)."""
+    return books[~books["Status"].isin(HIDDEN_STATUSES)].reset_index(drop=True)
+
+
+def update_book(book_id: str, changes: dict) -> None:
+    """Change some fields of one book (status after Accept, or an owner's edit)."""
+    worksheet = _worksheet_or_none()
+    if worksheet is not None:
+        header = worksheet.row_values(1)
+        ids = worksheet.col_values(header.index("Book ID") + 1)
+        row = ids.index(book_id) + 1
+        for column, value in changes.items():
+            worksheet.update_cell(row, header.index(column) + 1, "" if value is None else value)
+        return
+    _temporary_changes().setdefault(book_id, {}).update(changes)
 
 
 def save_listing(row: list) -> None:
@@ -177,3 +208,57 @@ def save_listing(row: list) -> None:
         worksheet.append_row(row, value_input_option="RAW")
     else:
         _temporary_listings().append(row)
+
+
+# ---------- My Listings: edit, pause and delete (BS-56, story P04-US07 criterion 7) ----------
+
+MANAGE_MESSAGES = {
+    "has_pending": "Decline its pending requests first.",
+    "not_editable": "Only Available or Paused books can be edited.",
+    "not_owner": "Only the owner can change this listing.",
+}
+
+
+def check_edit(book: pd.Series, user: str, condition: str, exchange_type: str, price) -> dict:
+    """Errors for an edit of condition, exchange type and price (same rules as listing a book)."""
+    errors = {}
+    if str(book["Owner Name"]).lower() != str(user).lower():
+        errors["owner"] = MANAGE_MESSAGES["not_owner"]
+    if book["Status"] not in ("Available", "Paused"):
+        errors["status"] = MANAGE_MESSAGES["not_editable"]
+    if condition not in CONDITIONS:
+        errors["condition"] = ERRORS["condition"]
+    if exchange_type not in EXCHANGE_TYPES:
+        errors["exchange_type"] = ERRORS["exchange"]
+    if exchange_type == "Sell" and not (price and float(price) > 0):
+        errors["price"] = ERRORS["price"]
+    return errors
+
+
+def edit_changes(condition: str, exchange_type: str, price) -> dict:
+    return {"Condition": condition, "Exchange Type": exchange_type,
+            "Price (Rs)": int(price) if exchange_type == "Sell" and price else None}
+
+
+def pause_change(book: pd.Series, user: str, has_pending: bool):
+    """Pause hides a book from browsing; Resume shows it again. Returns (error, changes)."""
+    if str(book["Owner Name"]).lower() != str(user).lower():
+        return MANAGE_MESSAGES["not_owner"], {}
+    if book["Status"] == "Available":
+        if has_pending:
+            return MANAGE_MESSAGES["has_pending"], {}
+        return None, {"Status": "Paused"}
+    if book["Status"] == "Paused":
+        return None, {"Status": "Available"}
+    return MANAGE_MESSAGES["not_editable"], {}
+
+
+def delete_change(book: pd.Series, user: str, has_pending: bool):
+    """Delete only a book with no pending request (criterion 7). Returns (error, changes)."""
+    if str(book["Owner Name"]).lower() != str(user).lower():
+        return MANAGE_MESSAGES["not_owner"], {}
+    if has_pending:
+        return MANAGE_MESSAGES["has_pending"], {}
+    if book["Status"] not in ("Available", "Paused"):
+        return MANAGE_MESSAGES["not_editable"], {}
+    return None, {"Status": "Deleted"}
