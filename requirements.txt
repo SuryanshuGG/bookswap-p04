@@ -3,3 +3,4 @@ pandas==3.0.5
 openpyxl==3.1.5
 gspread==6.2.1
 google-auth==2.62.1
+# Changing this file restarts the Streamlit Cloud app (needed after the BS-36 merge)
