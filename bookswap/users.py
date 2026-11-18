@@ -40,6 +40,26 @@ def check_sign_up(name: str, email: str, users: pd.DataFrame) -> str | None:
     return None
 
 
+def check_sign_in(name: str | None, email: str, users: pd.DataFrame) -> str | None:
+    """Return an error message, or None if the student can sign in.
+
+    A college email ending in @xime.org is always required. When the Users list
+    already has an email for that name, the two must match.
+    """
+    email = (email or "").strip().lower()
+    if not name:
+        return "Please choose your name. New here? Use the Sign up tab."
+    if not email:
+        return "Please enter your college email."
+    if not _EMAIL_PATTERN.match(email) or not email.endswith("@" + COLLEGE_DOMAIN):
+        return f"Please use your college email ending in @{COLLEGE_DOMAIN}."
+    saved = users.loc[users["Name"] == name, "College Email"]
+    saved_email = str(saved.iloc[0]).strip().lower() if not saved.empty else ""
+    if saved_email and email != saved_email:
+        return "That email doesn't match the one on the Users list."
+    return None
+
+
 def clean_users(rows: pd.DataFrame) -> pd.DataFrame:
     """Keep only real user rows with the three columns the app uses."""
     for column in USER_COLUMNS:
