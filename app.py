@@ -25,11 +25,11 @@ from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
     hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
-    section_title_html, title_hero_html, user_badge_html, welcome_panel_html,
+    section_title_html, user_badge_html, splash_html, onboarding_html, auth_heading_html, auth_panel_html,
 )
 from bookswap.users import add_user, check_sign_in, check_sign_up, is_permanent, load_users
 
-st.set_page_config(page_title="BookSwap", page_icon="📚", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="BookSwap", page_icon="assets/logo.png", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(PAGE_CSS, unsafe_allow_html=True)
 
 
@@ -69,24 +69,64 @@ def sign_up_form(users) -> None:
         st.rerun()
 
 
-def sign_in_page() -> None:
-    books = load_books()
+def go_auth(step) -> None:
+    st.session_state["auth_step"] = step
+
+
+def splash_page() -> None:
+    """First page: only the logo, name and one line, then Get started or Sign in. No book counts."""
+    _, mid, _ = st.columns([1, 1.15, 1])
+    with mid, st.container(key="splash_card"):
+        st.markdown(splash_html(), unsafe_allow_html=True)
+        st.button("Get started", key="get_started", use_container_width=True, on_click=go_auth, args=(0,))
+        st.button("I already have an account", key="have_account", use_container_width=True, on_click=go_auth, args=("signin",))
+        st.markdown("<div style='text-align:center;font-size:12.5px;color:#1F2A26;margin-top:4px'>For XIME Bangalore students</div>",
+                    unsafe_allow_html=True)
+
+
+def intro_page(step: int) -> None:
+    """Three short intro steps with Back, Skip, Next and progress dots."""
+    _, mid, _ = st.columns([1, 1.15, 1])
+    with mid, st.container(key="onboard_card"):
+        back, _, skip = st.columns([1.4, 1, 1], vertical_alignment="center")
+        with back:
+            st.button("← Back", key="intro_back", on_click=go_auth, args=(step - 1 if step else "splash",))
+        with skip:
+            if step < 2:
+                st.button("Skip", key="intro_skip", on_click=go_auth, args=("signup",))
+        st.markdown(onboarding_html(step), unsafe_allow_html=True)
+        if step < 2:
+            st.button("Next →", key="intro_next", use_container_width=True, on_click=go_auth, args=(step + 1,))
+        else:
+            st.button("Create account", key="intro_join", use_container_width=True, on_click=go_auth, args=("signup",))
+            st.button("Sign in", key="intro_signin", use_container_width=True, on_click=go_auth, args=("signin",))
+
+
+def auth_page(mode: str) -> None:
+    """Separate page after tapping Sign in or Sign up, with the Welcome heading."""
     users = load_users()
-    # Title page: book photo first, then Welcome and Sign in below it
-    st.markdown(title_hero_html(len(books), books["Exchange Type"].value_counts().to_dict()), unsafe_allow_html=True)
-    st.markdown("<div id='welcome'></div>", unsafe_allow_html=True)
-    _, form, _ = st.columns([1, 1.5, 1])
+    panel, form = st.columns([1.05, 1], gap="large")
+    with panel:
+        st.markdown(auth_panel_html(), unsafe_allow_html=True)
     with form, st.container(key="auth_card"):
-        st.markdown(
-            "<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:0 0 4px'>Welcome</div>"
-            "<div style='font-size:15px;color:#5F6368;margin-bottom:16px'>Sign in to browse and request books.</div>",
-            unsafe_allow_html=True,
-        )
-        sign_in_tab, sign_up_tab = st.tabs(["Sign in", "New here? Sign up"])
-        with sign_in_tab:
-            sign_in_form(users)
-        with sign_up_tab:
+        st.button("← Back", key="auth_back", on_click=go_auth, args=("splash",))
+        st.markdown(auth_heading_html(mode), unsafe_allow_html=True)
+        if mode == "signup":
             sign_up_form(users)
+            st.button("Already have an account? Sign in", key="auth_switch", on_click=go_auth, args=("signin",))
+        else:
+            sign_in_form(users)
+            st.button("New here? Create account", key="auth_switch", on_click=go_auth, args=("signup",))
+
+
+def sign_in_page() -> None:
+    step = st.session_state.get("auth_step", "splash")
+    if step in ("signin", "signup"):
+        auth_page(step)
+    elif isinstance(step, int):
+        intro_page(step)
+    else:
+        splash_page()
 
 
 # ---------- Book details (US01, acceptance criterion 3) ----------
@@ -262,7 +302,7 @@ def top_bar() -> None:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
     with button:
         if st.button("Sign out", use_container_width=True):
-            for key in ("user", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message"):
+            for key in ("user", "auth_step", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message"):
                 st.session_state.pop(key, None)
             st.rerun()
 
