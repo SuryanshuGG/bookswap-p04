@@ -25,7 +25,7 @@ from bookswap.search import NO_MATCH_MESSAGE, search_books
 from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
     hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
-    section_title_html, user_badge_html, welcome_panel_html,
+    section_title_html, title_hero_html, user_badge_html, welcome_panel_html,
 )
 from bookswap.users import add_user, check_sign_in, check_sign_up, is_permanent, load_users
 
@@ -72,10 +72,10 @@ def sign_up_form(users) -> None:
 def sign_in_page() -> None:
     books = load_books()
     users = load_users()
-    st.write("")
-    panel, form = st.columns([11, 10], gap="large")
-    with panel:
-        st.markdown(welcome_panel_html(len(books)), unsafe_allow_html=True)
+    # Title page: book photo first, then Welcome and Sign in below it
+    st.markdown(title_hero_html(len(books), books["Exchange Type"].value_counts().to_dict()), unsafe_allow_html=True)
+    st.markdown("<div id='welcome'></div>", unsafe_allow_html=True)
+    _, form, _ = st.columns([1, 1.5, 1])
     with form, st.container(key="auth_card"):
         st.markdown(
             "<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:0 0 4px'>Welcome</div>"
