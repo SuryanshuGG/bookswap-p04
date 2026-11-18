@@ -6,6 +6,7 @@ light grey fields, bold black labels, rounded shapes and the Inter font.
 
 import base64
 import html
+import itertools
 import textwrap
 from pathlib import Path
 
@@ -104,6 +105,26 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 /* Book details pop-up */
 [data-testid="stDialog"] [role="dialog"] {{ border-radius: 22px; background: #FFFFFF; }}
 
+[class*="st-key-FormSubmitter"], [class*="st-key-FormSubmitter"] > div, [data-testid="stFormSubmitButton"], [data-testid="stFormSubmitButton"] > button {{ width: 100% !important; }}
+.st-key-onboard_card [data-testid="stHorizontalBlock"], .st-key-auth_card [data-testid="stHorizontalBlock"] {{ flex-wrap: nowrap !important; }}
+.st-key-onboard_card [data-testid="stColumn"] {{ min-width: 0 !important; }}
+.st-key-intro_skip {{ display: flex; justify-content: flex-end; }}
+/* Welcome flow: splash, three intro steps, then a separate Sign in / Sign up page */
+.st-key-splash_card {{ background: {MINT}; border-radius: 30px; padding: 40px 26px 26px !important; }}
+.st-key-onboard_card, .st-key-auth_card {{ background: #FFFFFF; border-radius: 28px !important; padding: 24px 24px 22px !important; box-shadow: 0 1px 2px rgba(17,17,17,.05); }}
+.st-key-get_started button {{ background: {INK} !important; color: #FFFFFF !important; border: 0 !important; min-height: 54px; font-size: 16px; }}
+.st-key-get_started button:hover {{ background: #000000 !important; color: #FFFFFF !important; }}
+.st-key-have_account button {{ background: rgba(255,255,255,.6) !important; border: 0 !important; min-height: 54px; font-size: 16px; }}
+.st-key-intro_next button, .st-key-intro_join button {{ background: {MINT} !important; border: 0 !important; min-height: 54px; font-size: 16px; }}
+.st-key-intro_next button:hover, .st-key-intro_join button:hover {{ background: #45BF93 !important; }}
+.st-key-intro_skip button, .st-key-intro_back button, .st-key-auth_back button, .st-key-auth_switch button {{ background: transparent !important; border: 0 !important; color: {GREEN} !important; min-height: 36px; }}
+.st-key-auth_back button, .st-key-intro_back button {{ color: {INK} !important; }}
+.st-key-intro_signin button {{ background: {FIELD} !important; border: 0 !important; min-height: 54px; font-size: 16px; }}
+@media (max-width: 640px) {{
+  .bs-auth-panel {{ display: none !important; }}
+  .st-key-splash_card {{ padding-top: 28px !important; }}
+}}
+
 @media (max-width: 640px) {{
   .bs-panel {{ min-height: 0 !important; padding: 22px 20px !important; }}
   .bs-title-inner {{ padding: 24px 22px 30px !important; }}
@@ -118,10 +139,30 @@ html, body, .stApp, [class*="st-"], button, input, textarea {{ font-family: 'Int
 
 # ---------- Top bar and headings ----------
 
+_LOGO_IDS = itertools.count()
+
+
+def logo_svg(size: int = 38) -> str:
+    """The BookSwap app icon: an open book with swap arrows on a mint tile."""
+    gid = f"bsg{next(_LOGO_IDS)}"  # unique per logo, so a hidden copy never blanks the others
+    return (
+        f"<svg width='{size}' height='{size}' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='BookSwap logo'>"
+        f"<defs><linearGradient id='{gid}' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#6EDBB3'/>"
+        "<stop offset='1' stop-color='#2FB487'/></linearGradient></defs>"
+        f"<rect width='64' height='64' rx='18' fill='url(#{gid})'/>"
+        "<path d='M10 19.5C17 16 25 16.5 31 20.5V47C25 43.5 17 43 10 46Z' fill='#FFFFFF'/>"
+        "<path d='M54 19.5C47 16 39 16.5 33 20.5V47C39 43.5 47 43 54 46Z' fill='#FFFFFF'/>"
+        "<path d='M16 28.5h11.5' stroke='#1E6B52' stroke-width='2.8' stroke-linecap='round'/>"
+        "<path d='M24.5 25l3.5 3.5-3.5 3.5' fill='none' stroke='#1E6B52' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/>"
+        "<path d='M48 36.5H36.5' stroke='#111111' stroke-width='2.8' stroke-linecap='round'/>"
+        "<path d='M39.5 33l-3.5 3.5 3.5 3.5' fill='none' stroke='#111111' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/>"
+        "</svg>"
+    )
+
+
 def brand_html(size: int = 22, mark: str = MINT) -> str:
     return (
-        f"<div style='display:flex;align-items:center;gap:10px'>"
-        f"<div style='width:38px;height:38px;border-radius:11px;background:{mark};display:flex;align-items:center;justify-content:center'>{BOOK_ICON}</div>"
+        f"<div style='display:flex;align-items:center;gap:10px'>{logo_svg(38)}"
         f"<span style='font-size:{size}px;font-weight:800;letter-spacing:-0.4px;color:{INK}'>BookSwap</span></div>"
     )
 
@@ -472,4 +513,99 @@ def title_hero_html(total: int, counts: dict) -> str:
   </div>
   <a href="{credit_link}" target="_blank" rel="noopener" style="position:absolute;right:16px;bottom:12px;font-size:11.5px;
      color:rgba(255,255,255,.8);text-decoration:none">{html.escape(credit)}</a>
+</div>"""
+
+
+# ---------- Welcome flow (BS-5): splash, intro steps, then Sign in / Sign up ----------
+
+def splash_html() -> str:
+    """First screen: only the app icon, name and one line. No book counts."""
+    return f"""
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 0 34px">
+  <div style="border-radius:30px;box-shadow:0 18px 40px rgba(17,17,17,.16);line-height:0">{logo_svg(104)}</div>
+  <div style="font-size:40px;font-weight:800;letter-spacing:-1.2px;color:{INK};margin-top:22px">BookSwap</div>
+  <div style="font-size:16px;font-weight:500;color:#1F2A26;line-height:1.45;max-width:280px;margin-top:8px">
+    Swap, borrow and buy books from students on your campus.</div>
+</div>"""
+
+
+def _dots(step: int) -> str:
+    return "".join(
+        f"<span style='display:inline-block;height:8px;border-radius:4px;margin-right:6px;"
+        f"width:{26 if i == step else 8}px;background:{INK if i == step else '#D5DADF'}'></span>"
+        for i in range(3)
+    )
+
+
+def _row(icon_bg: str, title: str, sub: str) -> str:
+    return (f"<div style='background:#FFFFFF;border-radius:18px;padding:13px 15px;display:flex;align-items:center;gap:12px;margin-top:10px'>"
+            f"<span style='flex:none;width:40px;height:40px;border-radius:13px;background:{icon_bg}'></span>"
+            f"<div style='text-align:left'><div style='font-size:15px;font-weight:700;color:{INK}'>{title}</div>"
+            f"<div style='font-size:13px;color:{MUTED}'>{sub}</div></div></div>")
+
+
+INTRO_STEPS = [
+    ("Give your old books a second semester",
+     "Swap a book you've finished, lend it for a term, or sell it at a student price."),
+    ("Request any book in one tap",
+     "Offer one of your books for a swap. For books on sale, pay the owner at handover by UPI or cash."),
+    ("Meet on campus, hand it over",
+     "Pick a spot and time on campus. Only XIME students can join."),
+]
+
+
+def onboarding_html(step: int) -> str:
+    title, body = INTRO_STEPS[step]
+    if step == 0:
+        photo = _hero_photo_uri()
+        pills = "".join(
+            f"<span style='flex:1;text-align:center;background:{MINT if k == 'Sell' else '#FFFFFF'};border-radius:14px;padding:10px 0;font-size:14px;font-weight:700;color:{INK}'>{k}</span>"
+            for k in ("Swap", "Lend", "Sell"))
+        visual = (f"<div style=\"height:300px;border-radius:24px;position:relative;overflow:hidden;background:{MINT_SOFT} url('{photo}') center/cover\">"
+                  f"<div style='position:absolute;left:14px;right:14px;bottom:14px;display:flex;gap:8px'>{pills}</div></div>")
+    elif step == 1:
+        visual = (f"<div style='height:300px;border-radius:24px;background:{MINT_SOFT};display:flex;flex-direction:column;justify-content:center;padding:0 20px;box-sizing:border-box'>"
+                  f"<div style='background:#FFFFFF;border-radius:18px;padding:16px;text-align:left;box-shadow:0 10px 28px rgba(30,107,82,.14)'>"
+                  f"<div style='font-size:16px;font-weight:800;color:{INK}'>Atomic Habits</div>"
+                  f"<div style='font-size:13px;color:{MUTED};margin:2px 0 8px'>James Clear · Like New</div>"
+                  f"<span class='bs-chip' style='background:{MINT_SOFT};color:{GREEN}'>Swap</span>"
+                  f"<div style='font-size:13px;color:{GREEN};font-weight:600;margin-top:4px'>You offer: Corporate Finance</div></div>"
+                  f"<div style='background:{INK};color:#FFFFFF;border-radius:14px;height:48px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;margin-top:12px'>✓ Request sent · Pending</div></div>")
+    else:
+        visual = (f"<div style='height:300px;border-radius:24px;background:{MINT_SOFT};display:flex;flex-direction:column;justify-content:center;padding:0 20px 10px;box-sizing:border-box'>"
+                  + _row(MINT, "Library entrance", "Thu · 4:30 pm")
+                  + _row("#FFF1D6", "Return by the date set", "For books you borrow")
+                  + _row("#E3E8FD", "Pay at handover", "UPI or cash, for books on sale") + "</div>")
+    return f"""
+<div style="font-size:13px;font-weight:600;color:{MUTED};text-align:center;margin-bottom:12px">{step + 1} of 3</div>
+{visual}
+<div style="font-size:29px;font-weight:800;letter-spacing:-0.9px;line-height:1.12;color:{INK};margin-top:24px">{title}</div>
+<div style="font-size:16px;color:{MUTED};line-height:1.5;margin:10px 0 18px">{body}</div>
+<div style="margin-bottom:14px">{_dots(step)}</div>"""
+
+
+def auth_heading_html(mode: str) -> str:
+    """The Welcome heading on the separate Sign in / Sign up page."""
+    if mode == "signup":
+        title, sub = "Welcome to BookSwap", "Create your account with your XIME email."
+    else:
+        title, sub = "Welcome back", "Sign in with your XIME email."
+    return (f"<div style='margin:4px 0 18px'>{logo_svg(48)}"
+            f"<div style='font-size:32px;font-weight:800;letter-spacing:-0.9px;color:{INK};margin-top:16px'>{title}</div>"
+            f"<div style='font-size:15.5px;color:{MUTED};margin-top:4px'>{sub}</div></div>")
+
+
+def auth_panel_html() -> str:
+    """Left panel on desktop beside the Sign in form (hidden on phones). No book counts."""
+    points = ["Swap, lend or sell to classmates", "Request in one tap, pay at handover", "Meet on campus. XIME students only"]
+    items = "".join(
+        f"<div style='display:flex;gap:12px;align-items:center;margin-top:14px'>"
+        f"<span style='flex:none;width:30px;height:30px;border-radius:15px;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-weight:800;color:{INK}'>✓</span>"
+        f"<span style='font-size:15.5px;font-weight:600;color:{INK}'>{p}</span></div>" for p in points)
+    return f"""
+<div class="bs-auth-panel" style="background:{MINT};border-radius:28px;padding:34px 34px;min-height:520px;box-sizing:border-box;display:flex;flex-direction:column">
+  {brand_html(24)}
+  <div style="flex:1"></div>
+  <div style="font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1.1;color:{INK}">Give your old books a second semester</div>
+  {items}
 </div>"""
