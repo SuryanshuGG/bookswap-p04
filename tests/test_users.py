@@ -33,3 +33,17 @@ def test_note_rows_without_a_role_are_ignored():
     rows = pd.DataFrame([["Riya", "Scrum Master", ""], ["Fill the yellow cells...", "", ""]],
                         columns=["Name", "Role", "College Email"])
     assert clean_users(rows)["Name"].tolist() == ["Riya"]
+
+
+def test_sign_in_needs_a_college_email():
+    import pandas as pd
+    from bookswap.users import check_sign_in
+    users = pd.DataFrame({"Name": ["Krishna", "Chandana"], "Role": ["Builder", "Product Owner"],
+                          "College Email": ["", "jupalle31blr@xime.org"]})
+    assert check_sign_in("Krishna", "", users) == "Please enter your college email."
+    assert check_sign_in("Krishna", "krishna@gmail.com", users) == "Please use your college email ending in @xime.org."
+    assert check_sign_in("Krishna", "krishna@xime.org.fake.com", users) == "Please use your college email ending in @xime.org."
+    assert check_sign_in("Krishna", "krishna31blr@xime.org", users) is None
+    assert check_sign_in("Chandana", "someone@xime.org", users) == "That email doesn't match the one on the Users list."
+    assert check_sign_in("Chandana", "JUPALLE31BLR@xime.org", users) is None
+    assert check_sign_in(None, "a@xime.org", users) == "Please choose your name. New here? Use the Sign up tab."
