@@ -51,9 +51,17 @@ def sign_in_form(users) -> None:
         st.rerun()
 
 
+def storage_note() -> None:
+    """Shows why the app is in test mode, so the team can fix the Google Sheet secrets."""
+    reason = listings.storage_problem()
+    if reason:
+        st.caption(f"Not saving to the Google Sheet because {reason}.")
+
+
 def sign_up_form(users) -> None:
     if not is_permanent():
         st.caption("Test mode: new accounts are kept only until the app restarts.")
+        storage_note()
     with st.form("sign_up"):
         name = st.text_input("Full name", placeholder="e.g. Ananya Sharma")
         email = st.text_input("College email", placeholder="name@xime.org", key="sign_up_email")
@@ -506,6 +514,7 @@ def list_book_page() -> None:
         )
         if not listings.is_permanent():
             st.caption("Test mode: new listings are kept only until the app restarts.")
+            storage_note()
         if errors:
             st.error("Please fill the highlighted fields to list your book.")
         with st.container(key="listing_card"):
