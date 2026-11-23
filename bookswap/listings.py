@@ -141,6 +141,38 @@ def _worksheet_or_none():
         return None
 
 
+def storage_problem() -> str | None:
+    """Why the Google Sheet isn't connected, in plain words (never shows the key), or None if it is."""
+    sheet_id, key_text = _secret("sheet_id"), _secret("service_account_json")
+    if not sheet_id and not key_text:
+        return "the Google Sheet secrets are not set in Streamlit"
+    if not sheet_id:
+        return "sheet_id is missing from the Streamlit secrets"
+    if not key_text:
+        return "service_account_json is missing from the Streamlit secrets"
+    try:
+        info = json.loads(key_text)
+    except Exception:
+        return "service_account_json is not valid JSON (paste the whole key file between the two triple-quote lines)"
+    if "client_email" not in info or "private_key" not in info:
+        return "service_account_json is not a service account key file"
+    try:
+        import gspread
+
+        client = gspread.service_account_from_dict(info)
+        client.open_by_key(str(sheet_id)).worksheet("Books")
+    except Exception as error:  # report Google's message, never the key
+        text = str(error)
+        if "has not been used" in text or "is disabled" in text:
+            return "the Google Sheets API is not enabled for the service account's project"
+        if "PERMISSION_DENIED" in text or "403" in text:
+            return f"the sheet is not shared with {info.get('client_email')}"
+        if "404" in text or "not found" in text.lower():
+            return "no sheet with that sheet_id, or no Books tab in it"
+        return f"{type(error).__name__}: {text[:160]}"
+    return None
+
+
 def is_permanent() -> bool:
     """True when new listings are saved to the Google Sheet."""
     return _worksheet_or_none() is not None
