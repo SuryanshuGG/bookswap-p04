@@ -19,6 +19,8 @@ import streamlit as st
 
 from bookswap import listings
 from bookswap import requests as book_requests
+from bookswap import help as book_help
+from bookswap import wishlist
 from bookswap.listings import load_books
 from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
@@ -26,6 +28,7 @@ from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
     hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
     section_title_html, user_badge_html, splash_html, onboarding_html, auth_heading_html, auth_panel_html,
+    help_page_html, wish_row_html,
 )
 from bookswap.users import add_user, check_sign_in, check_sign_up, is_permanent, load_users
 
@@ -284,8 +287,9 @@ def top_bar() -> None:
     requests, books = book_requests.load_requests(), load_books()
     owner_count = book_requests.owner_badge(requests, books, user)
     requester_count = book_requests.requester_badge(requests, user)
-    left, browse, list_book, my_list, my_req, right, button = st.columns(
-        [2.4, 1.4, 1.5, 1.6, 1.6, 2.0, 1.1], vertical_alignment="center")
+    wish_count = wishlist.badge_count(wishlist.load_wishes(), books, user)
+    left, browse, list_book, my_list, my_req, wish, helps, right, button = st.columns(
+        [1.9, 1.6, 1.5, 1.6, 1.6, 1.3, 0.9, 1.6, 1.3], vertical_alignment="center")
     with left:
         st.markdown(brand_html(), unsafe_allow_html=True)
     with browse:
@@ -306,11 +310,20 @@ def top_bar() -> None:
         if st.button(label, key="nav_requests", use_container_width=True):
             st.session_state.pop("just_requested", None)
             go_to("requests")
+    with wish:
+        # Badge: books on my wishlist that someone has now listed (US10 criterion 6)
+        label = f"Wishlist ({wish_count})" if wish_count else "Wishlist"
+        if st.button(label, key="nav_wishlist", use_container_width=True):
+            go_to("wishlist")
+    with helps:
+        # Guidelines and how-to one tap from every screen (US11 criterion 4)
+        if st.button("Help", key="nav_help", use_container_width=True):
+            go_to("help")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
     with button:
         if st.button("Sign out", use_container_width=True):
-            for key in ("user", "auth_step", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message"):
+            for key in ("user", "auth_step", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message", "wish_message"):
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -472,6 +485,12 @@ def browse_page() -> None:
     if shown.empty:
         message = NO_MATCH_MESSAGE if query.strip() and not (course or genre or exchange) else NO_FILTER_MATCH_MESSAGE
         st.markdown(empty_state_html(message), unsafe_allow_html=True)
+        if query.strip() and not (course or genre or exchange):
+            _, middle, _ = st.columns([1, 2, 1])
+            with middle:
+                st.button(f'+ Add "{query.strip()}" to my wishlist', key="wish_from_search", use_container_width=True,
+                          on_click=add_to_wishlist, args=(query.strip(), ""))
+                show_wish_message()
         return
 
     per_row = 4
@@ -595,6 +614,78 @@ def listed_page(book_id: str) -> None:
                 go_to("list")
 
 
+# ---------- Wishlist (BS-42, story P04-US10) ----------
+
+def add_to_wishlist(title: str, author: str) -> None:
+    error = wishlist.add_wish(title, author, st.session_state["user"])
+    st.session_state["wish_message"] = ("error", error) if error else ("success", wishlist.MESSAGES["saved"])
+
+
+def remove_from_wishlist(wish_id: str) -> None:
+    wishlist.remove_wish(wish_id, st.session_state["user"])
+    st.session_state["wish_message"] = ("success", wishlist.MESSAGES["removed"])
+
+
+def show_wish_message() -> None:
+    kind, text = st.session_state.pop("wish_message", (None, None))
+    if kind == "error":
+        st.warning(text)
+    elif kind == "success":
+        st.success(text)
+
+
+def wishlist_page() -> None:
+    user = st.session_state["user"]
+    books = load_books()
+    mine = wishlist.with_matches(wishlist.my_wishes(wishlist.load_wishes(), user), books, user)
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown("<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 4px'>My Wishlist</div>"
+                    "<div style='color:#5F6368;font-size:15px;margin-bottom:14px'>Save a book you can't find. "
+                    "It shows Now Available as soon as another student lists it.</div>", unsafe_allow_html=True)
+        if not wishlist.is_permanent():
+            st.caption("Test mode: wishlist entries are kept only until the app restarts.")
+        with st.form("add_wish", clear_on_submit=True, border=True):
+            title_col, author_col = st.columns([3, 2])
+            with title_col:
+                title = st.text_input("Book title *", placeholder="e.g. Principles of Corporate Finance")
+            with author_col:
+                author = st.text_input("Author (optional)", placeholder="e.g. Brealey")
+            if st.form_submit_button("+ Add to wishlist", use_container_width=True):
+                add_to_wishlist(title, author)
+                st.rerun()  # redraw so the Wishlist badge in the top bar counts the new book
+        show_wish_message()
+        if mine.empty:
+            st.markdown(empty_state_html("Your wishlist is empty. Add a book above, or from a search that finds nothing."),
+                        unsafe_allow_html=True)
+            return
+        ready = int(mine["Now Available"].sum())
+        st.markdown(section_title_html("Saved books", f"{len(mine)} saved · {ready} now available"), unsafe_allow_html=True)
+        for _, wish in mine.iterrows():
+            with st.container(key=f"wish_{wish['Wish ID']}"):
+                added = pd.to_datetime(wish["Date Added"], errors="coerce")
+                st.markdown(wish_row_html(wish["Title"], wish["Author"], added.strftime("%-d %b %Y") if pd.notna(added) else wish["Date Added"], wish["Now Available"],
+                                          len(wish["Match IDs"])), unsafe_allow_html=True)
+                view, remove = st.columns(2)
+                with view:
+                    if wish["Now Available"]:
+                        match = books[books["Book ID"] == wish["Match IDs"][0]].iloc[0]
+                        if st.button("View book", key=f"wish_view_{wish['Wish ID']}", use_container_width=True):
+                            show_details(match)
+                with remove:
+                    st.button("Remove", key=f"wish_remove_{wish['Wish ID']}", use_container_width=True,
+                              on_click=remove_from_wishlist, args=(wish["Wish ID"],))
+
+
+# ---------- Help: guidelines and how-to (BS-44, BS-45, story P04-US11) ----------
+
+def help_page() -> None:
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown(help_page_html(book_help.GUIDELINES, book_help.HOW_TO, book_help.HANDOVER_POINTS,
+                                   book_help.HANDOVER_HOURS), unsafe_allow_html=True)
+
+
 # ---------- Page flow ----------
 
 if "user" not in st.session_state:
@@ -610,5 +701,9 @@ else:
         my_requests_page()
     elif page == "listings":
         my_listings_page()
+    elif page == "wishlist":
+        wishlist_page()
+    elif page == "help":
+        help_page()
     else:
         browse_page()

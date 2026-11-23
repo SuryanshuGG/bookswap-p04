@@ -46,4 +46,4 @@ def test_sign_in_needs_a_college_email():
     assert check_sign_in("Krishna", "krishna31blr@xime.org", users) is None
     assert check_sign_in("Chandana", "someone@xime.org", users) == "That email doesn't match the one on the Users list."
     assert check_sign_in("Chandana", "JUPALLE31BLR@xime.org", users) is None
-    assert check_sign_in(None, "a@xime.org", users) == "Please choose your name. New here? Use the Sign up tab."
+    assert check_sign_in(None, "a@xime.org", users) == "Please choose your name. New here? Tap Create account below."
