@@ -189,7 +189,9 @@ def _secret(key: str):
 def _requests_worksheet():
     sheet_id, key_text = _secret("sheet_id"), _secret("service_account_json")
     if not sheet_id or not key_text:
-        return None
+        # Raise rather than return None: a cached None would keep the app in test mode
+        # even after the secrets are added. Callers treat the error as "no sheet".
+        raise LookupError("Google Sheet secrets are not set")
     import gspread
 
     client = gspread.service_account_from_dict(json.loads(key_text))
