@@ -669,3 +669,51 @@ def wish_row_html(title: str, author: str, added: str, available: bool, match_co
         f"<div style='font-size:13.5px;color:{MUTED};margin:2px 0 10px'>Saved {html.escape(added)}{by}</div>"
         f"<div>{chip}</div></div>"
     )
+
+
+# ---------- Reading circle announcements (P04-US13) ----------
+
+def announcements_html(items: list[dict]) -> str:
+    """Cards on the home screen, soonest first. items: title, date_text, time_text, venue, details."""
+    if not items:
+        return ""
+    cards = "".join(
+        f"<div style='flex:1 1 260px;background:#FFFFFF;border-radius:18px;padding:14px 16px;border-left:5px solid {MINT}'>"
+        f"<div style='font-size:12px;font-weight:700;color:{GREEN};letter-spacing:.3px'>READING CIRCLE · {html.escape(a['date_text'])}</div>"
+        f"<div style='font-size:16.5px;font-weight:800;color:{INK};margin-top:4px'>{html.escape(a['title'])}</div>"
+        f"<div style='font-size:13.5px;color:{MUTED};margin-top:2px'>{html.escape(a['time_text'])} · {html.escape(a['venue'])}</div>"
+        + (f"<div style='font-size:13.5px;color:#333333;margin-top:6px'>{html.escape(a['details'])}</div>" if a.get("details") else "")
+        + "</div>"
+        for a in items)
+    return f"<div style='display:flex;flex-wrap:wrap;gap:12px;margin:4px 0 14px'>{cards}</div>"
+
+
+# ---------- Handover (P04-US08) ----------
+
+def handover_card_html(plan_text: str, where: str, proposer: str, steps: list[tuple[str, bool]],
+                       outcome: str = "", outcome_tone: str = "good") -> str:
+    """The agreed point and time, who has confirmed, and the result. steps: (label, done)."""
+    tones = {"good": (MINT_SOFT, GREEN), "warn": ("#FFF1D6", "#8A5300"), "bad": ("#FDE7E7", "#B42318")}
+    bg, fg = tones.get(outcome_tone, tones["good"])
+    plan = (f"<div style='font-weight:800;font-size:15.5px;color:{INK}'>📍 {html.escape(plan_text)}</div>"
+            f"<div style='font-size:13px;color:{MUTED};margin-top:2px'>{html.escape(where)}"
+            f"{' · proposed by ' + html.escape(proposer) if proposer else ''}</div>") if plan_text else (
+            f"<div style='font-weight:700;color:{INK}'>No handover planned yet</div>"
+            f"<div style='font-size:13px;color:{MUTED};margin-top:2px'>Choose an approved campus point and a time below.</div>")
+    ticks = "".join(
+        f"<span style='display:inline-block;margin:8px 8px 0 0;font-size:13px;font-weight:600;border-radius:999px;padding:4px 10px;"
+        f"background:{MINT if done else FIELD};color:{INK}'>{'✓' if done else '○'} {html.escape(label)}</span>"
+        for label, done in steps)
+    result = (f"<div style='margin-top:10px;background:{bg};color:{fg};border-radius:12px;padding:8px 12px;"
+              f"font-weight:700;font-size:14px'>{html.escape(outcome)}</div>") if outcome else ""
+    return (f"<div style='background:#FFFFFF;border:1.5px solid {MINT};border-radius:16px;padding:14px 16px;margin:6px 0'>"
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:.4px;color:{GREEN};margin-bottom:6px'>HANDOVER</div>"
+            f"{plan}{ticks}{result}</div>")
+
+
+def message_html(sender: str, text: str, when: str, mine: bool) -> str:
+    side = "flex-end" if mine else "flex-start"
+    bg = MINT_SOFT if mine else FIELD
+    return (f"<div style='display:flex;justify-content:{side};margin:4px 0'><div style='max-width:80%;background:{bg};"
+            f"border-radius:14px;padding:8px 12px'><div style='font-size:12px;color:{MUTED}'>{html.escape(sender)} · "
+            f"{html.escape(when)}</div><div style='font-size:14.5px;color:{INK}'>{html.escape(text)}</div></div></div>")
