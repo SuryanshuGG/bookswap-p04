@@ -609,3 +609,63 @@ def auth_panel_html() -> str:
   <div style="font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1.1;color:{INK}">Give your old books a second semester</div>
   {items}
 </div>"""
+
+
+# ---------- Help page (P04-US11) ----------
+
+def help_page_html(guidelines, how_to, points, hours: str) -> str:
+    """Guidelines, five-step how-to and approved handover points on one page."""
+    steps = "".join(
+        f"<div style='display:flex;gap:14px;align-items:flex-start;margin-top:12px'>"
+        f"<span style='flex:none;width:30px;height:30px;border-radius:15px;background:{MINT};color:{INK};"
+        f"font-weight:800;display:flex;align-items:center;justify-content:center'>{n}</span>"
+        f"<div><div style='font-weight:700;color:{INK}'>{html.escape(title)}</div>"
+        f"<div style='color:{MUTED};font-size:14.5px;line-height:1.45'>{html.escape(text)}</div></div></div>"
+        for n, (title, text) in enumerate(how_to, start=1))
+    place_rows = "".join(
+        f"<div style='display:flex;gap:12px;align-items:center;background:{FIELD};border-radius:14px;padding:10px 12px;margin-top:8px'>"
+        f"<span style='flex:none;width:34px;height:34px;border-radius:11px;background:{MINT_SOFT};display:flex;align-items:center;justify-content:center'>"
+        f"<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='{GREEN}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>"
+        f"<path d='M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z'/><circle cx='12' cy='9.5' r='2.5'/></svg></span>"
+        f"<div><div style='font-weight:700;color:{INK}'>{html.escape(name)}</div>"
+        f"<div style='font-size:13px;color:{MUTED}'>{html.escape(where)}</div></div></div>"
+        for name, where in points)
+    sections = "".join(
+        f"<div style='background:#FFFFFF;border-radius:20px;padding:20px 22px;margin-top:14px'>"
+        f"<div style='font-size:18px;font-weight:800;color:{INK}'>{html.escape(title)}</div>"
+        f"<ul style='margin:10px 0 0 0;padding-left:20px;color:#333333;font-size:14.5px;line-height:1.55'>"
+        + "".join(f"<li style='margin-top:4px'>{html.escape(rule)}</li>" for rule in rules)
+        + "</ul>"
+        + (f"<div style='font-weight:700;color:{INK};margin-top:14px'>Approved handover points · {html.escape(hours)}</div>{place_rows}"
+           if title == "Safe meeting" else "")
+        + "</div>"
+        for title, rules in guidelines)
+    return f"""
+<div style="font-size:28px;font-weight:800;letter-spacing:-0.6px;color:{INK};margin:10px 0 4px">Help</div>
+<div style="color:{MUTED};font-size:15px">How BookSwap works, and the rules every member agrees to.</div>
+<div style="background:#FFFFFF;border-radius:20px;padding:20px 22px;margin-top:16px">
+  <div style="font-size:18px;font-weight:800;color:{INK}">How to list and request a book</div>
+  {steps}
+</div>
+{sections}
+<div style="font-size:12.5px;color:{MUTED};margin:14px 4px 0">Guidelines approved by the literary club coordinator.</div>"""
+
+
+# ---------- Wishlist (P04-US10) ----------
+
+def wish_row_html(title: str, author: str, added: str, available: bool, match_count: int = 0) -> str:
+    """One wishlist entry with its Now Available or Waiting chip."""
+    if available:
+        chip = (f"<span class='bs-chip' style='background:{MINT};color:{INK}'>● Now Available</span>"
+                f"<span style='font-size:13px;color:{GREEN};font-weight:600;margin-left:6px'>"
+                f"{match_count} cop{'y' if match_count == 1 else 'ies'} listed</span>")
+    else:
+        chip = f"<span class='bs-chip' style='background:{FIELD};color:#333333'>Waiting for a listing</span>"
+    by = f" · {html.escape(author)}" if author else ""
+    return (
+        f"<div style='background:#FFFFFF;border-radius:18px;padding:16px 18px;margin-top:4px;"
+        f"{'border:2px solid ' + MINT + ';' if available else ''}'>"
+        f"<div style='font-weight:800;font-size:16px;color:{INK}'>{html.escape(title)}</div>"
+        f"<div style='font-size:13.5px;color:{MUTED};margin:2px 0 10px'>Saved {html.escape(added)}{by}</div>"
+        f"<div>{chip}</div></div>"
+    )

@@ -48,7 +48,7 @@ def check_sign_in(name: str | None, email: str, users: pd.DataFrame) -> str | No
     """
     email = (email or "").strip().lower()
     if not name:
-        return "Please choose your name. New here? Use the Sign up tab."
+        return "Please choose your name. New here? Tap Create account below."
     if not email:
         return "Please enter your college email."
     if not _EMAIL_PATTERN.match(email) or not email.endswith("@" + COLLEGE_DOMAIN):
