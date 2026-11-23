@@ -1,4 +1,4 @@
-# restart: wishlist and Help page (23 Nov)
+# restart: announcements and handover (24 Nov)
 streamlit==1.66.1
 pandas==3.0.5
 openpyxl==3.1.5

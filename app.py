@@ -12,7 +12,7 @@ BS-31 (P04-US05): request a book; swap offers, pay-at-handover note, My Requests
 BS-36 and BS-56 (P04-US07): My Listings with Accept and Decline, return dates, badges, edit, pause and delete.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -21,6 +21,8 @@ from bookswap import listings
 from bookswap import requests as book_requests
 from bookswap import help as book_help
 from bookswap import wishlist
+from bookswap import announcements
+from bookswap import handover
 from bookswap.listings import load_books
 from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
@@ -28,7 +30,7 @@ from bookswap.ui import (
     PAGE_CSS, brand_html, card_html, cover_html, details_html, empty_state_html, field_error_html,
     hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
     section_title_html, user_badge_html, splash_html, onboarding_html, auth_heading_html, auth_panel_html,
-    help_page_html, wish_row_html,
+    help_page_html, wish_row_html, announcements_html, handover_card_html, message_html,
 )
 from bookswap.users import add_user, check_sign_in, check_sign_up, is_permanent, load_users
 
@@ -273,6 +275,8 @@ def my_requests_page() -> None:
             st.markdown(empty_state_html(f"No {choice.lower()} requests."), unsafe_allow_html=True)
         for _, row in shown.iterrows():
             st.markdown(request_row_html(row, request_extra(row)), unsafe_allow_html=True)
+            if row["Status"] == "Accepted":
+                handover_panel(row["Request ID"])
 
 
 # ---------- Browse books (US01, acceptance criteria 1, 2 and 4) ----------
@@ -321,9 +325,13 @@ def top_bar() -> None:
             go_to("help")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
+        # Coordinator tools: announcements now, donations and reports later (US13, US14, US09)
+        if announcements.is_coordinator(user, load_users()):
+            if st.button("Coordinator", key="nav_coordinator", use_container_width=True):
+                go_to("coordinator")
     with button:
         if st.button("Sign out", use_container_width=True):
-            for key in ("user", "auth_step", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message", "wish_message"):
+            for key in ("user", "auth_step", "page", "just_listed", "listing_errors", "just_requested", "req_tab", "listing_message", "wish_message", "coord_message"):
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -389,6 +397,8 @@ def my_listings_page() -> None:
                 # Requests on this book: Accept or Decline (BS-36)
                 for _, req in book_requests_here.iterrows():
                     st.markdown(owner_request_html(req, owner_extra(req)), unsafe_allow_html=True)
+                    if req["Status"] == "Accepted":
+                        handover_panel(req["Request ID"])
                     if req["Status"] != "Pending":
                         continue
                     rid = req["Request ID"]
@@ -455,6 +465,12 @@ def browse_page() -> None:
     if st.session_state.pop("welcome", False):
         st.success(f"Welcome to BookSwap, {st.session_state['user']}! Your account is ready.")
     books = listings.visible_books(load_books())
+    # Return reminders for borrowed books (BS-39, US08 criteria 7 and 8)
+    for note in handover.reminders(book_requests.load_requests(), load_books(), handover.load(), st.session_state["user"]):
+        (st.error if note.startswith("Overdue") else st.warning)(note)
+    # Reading circle announcements on the home screen, soonest first (BS-49, US13)
+    st.markdown(announcements_html(announcement_cards(announcements.live(announcements.load()))),
+                unsafe_allow_html=True)
     st.markdown(hero_html(len(books), books["Exchange Type"].value_counts().to_dict()), unsafe_allow_html=True)
 
     # Search by title or author (BS-27, story P04-US03)
@@ -686,6 +702,200 @@ def help_page() -> None:
                                    book_help.HANDOVER_HOURS), unsafe_allow_html=True)
 
 
+# ---------- Reading circle announcements (BS-49, story P04-US13) ----------
+
+def announcement_cards(rows) -> list[dict]:
+    cards = []
+    for _, a in rows.iterrows():
+        when = pd.to_datetime(a["Event Date"], errors="coerce")
+        at = pd.to_datetime(a["Event Time"], format="%H:%M", errors="coerce")
+        cards.append({"title": a["Title"], "venue": a["Venue"], "details": a["Details"],
+                      "date_text": when.strftime("%a %-d %b") if pd.notna(when) else a["Event Date"],
+                      "time_text": at.strftime("%-I:%M %p").lower() if pd.notna(at) else a["Event Time"]})
+    return cards
+
+
+def remove_announcement(announcement_id: str) -> None:
+    error = announcements.remove(announcement_id, st.session_state["user"], load_users())
+    st.session_state["coord_message"] = ("error", error) if error else ("success", announcements.MESSAGES["deleted"])
+
+
+def coordinator_page() -> None:
+    user, users = st.session_state["user"], load_users()
+    _, middle, _ = st.columns([1, 3, 1])
+    with middle:
+        st.markdown("<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 4px'>Coordinator</div>"
+                    "<div style='color:#5F6368;font-size:15px;margin-bottom:14px'>Literary club tools: reading circle "
+                    "announcements.</div>", unsafe_allow_html=True)
+        if not announcements.is_coordinator(user, users):  # criterion 5
+            st.warning(announcements.MESSAGES["not_coordinator"])
+            return
+        if not announcements.is_permanent():
+            st.caption("Test mode: announcements are kept only until the app restarts.")
+        st.markdown(section_title_html("Post a reading circle announcement", "Shows on every student's home screen"),
+                    unsafe_allow_html=True)
+        with st.form("post_announcement", clear_on_submit=True, border=True):
+            title = st.text_input("Title *", placeholder="e.g. Reading circle: Atomic Habits")
+            day_col, time_col = st.columns(2)
+            with day_col:
+                event_date = st.date_input("Date *", value=None, min_value=announcements.today_ist(), format="DD/MM/YYYY")
+            with time_col:
+                event_time = st.time_input("Time *", value=None, step=900)
+            venue = st.text_input("Venue *", placeholder="e.g. Library discussion room")
+            details = st.text_area("Details (optional)", max_chars=200, placeholder="e.g. Chapters 1 to 4. All welcome.")
+            if st.form_submit_button("Post announcement", use_container_width=True):
+                error = announcements.post(title, event_date, event_time, venue, details, user, users)
+                st.session_state["coord_message"] = ("error", error) if error else ("success", announcements.MESSAGES["posted"])
+                st.rerun()
+        kind, text = st.session_state.pop("coord_message", (None, None))
+        if kind == "error":
+            st.warning(text)
+        elif kind == "success":
+            st.success(text)
+        upcoming = announcements.live(announcements.load())
+        st.markdown(section_title_html("Live announcements", f"{len(upcoming)} shown to students · past events hide automatically"),
+                    unsafe_allow_html=True)
+        for card, (_, row) in zip(announcement_cards(upcoming), upcoming.iterrows()):
+            st.markdown(announcements_html([card]), unsafe_allow_html=True)
+            st.button("Remove", key=f"ann_remove_{row['Announcement ID']}", on_click=remove_announcement,
+                      args=(row["Announcement ID"],))
+
+
+# ---------- Handover after Accept (BS-39, story P04-US08) ----------
+
+def _handover_message(request_id: str, kind: str, text: str) -> None:
+    st.session_state[f"handover_msg_{request_id}"] = (kind, text)
+
+
+def _request_and_book(request_id: str):
+    requests, books = book_requests.load_requests(), load_books()
+    req = requests[requests["Request ID"] == request_id].iloc[0]
+    book = books[books["Book ID"] == req["Book ID"]].iloc[0]
+    return req, book
+
+
+def confirm_handover(request_id: str) -> None:
+    req, book = _request_and_book(request_id)
+    plan = handover.find(handover.load(), request_id)
+    error, changes, book_changes, offered_changes = handover.plan_confirm(plan, req, book, st.session_state["user"])
+    if error:
+        return _handover_message(request_id, "error", error)
+    handover.save_changes(request_id, changes)
+    if book_changes:
+        listings.update_book(book["Book ID"], book_changes)
+    if offered_changes and req.get("Offered Book ID"):
+        listings.update_book(req["Offered Book ID"], offered_changes)
+    _handover_message(request_id, "success", "Handover complete. The book is now Exchanged." if book_changes
+                      else "Thanks. Waiting for the other student to confirm.")
+
+
+def mark_paid(request_id: str) -> None:
+    req, book = _request_and_book(request_id)
+    error, changes = handover.plan_paid(handover.find(handover.load(), request_id), req, book, st.session_state["user"])
+    if error:
+        return _handover_message(request_id, "error", error)
+    handover.save_changes(request_id, changes)
+    _handover_message(request_id, "success", f"Marked Paid ₹{changes['Paid Amount']}.")
+
+
+def mark_returned(request_id: str) -> None:
+    req, book = _request_and_book(request_id)
+    error, changes, book_changes = handover.plan_returned(handover.find(handover.load(), request_id), req, book,
+                                                          st.session_state["user"])
+    if error:
+        return _handover_message(request_id, "error", error)
+    handover.save_changes(request_id, changes)
+    listings.update_book(book["Book ID"], book_changes)
+    _handover_message(request_id, "success", f"{book['Title']} is back and listed as Available again.")
+
+
+def handover_panel(request_id: str) -> None:
+    """Plan, confirm and finish the handover. Both students see the same card (criterion 5)."""
+    user = st.session_state["user"]
+    req, book = _request_and_book(request_id)
+    role = handover.role_of(user, req, book)
+    if role is None:
+        return
+    plan = handover.find(handover.load(), request_id)
+    other = req["Requester Name"] if role == "owner" else book["Owner Name"]
+    scheduled, done = handover.is_scheduled(plan), handover.both_done(plan)
+    plan_text = where = proposer = ""
+    if scheduled:
+        when = datetime.combine(date.fromisoformat(plan["Date"]), datetime.strptime(plan["Time"], "%H:%M").time())
+        plan_text = f"{plan['Point']} · {when.strftime('%a %-d %b, %-I:%M %p').replace('AM', 'am').replace('PM', 'pm')}"
+        where, proposer = handover.point_where(plan["Point"]), plan.get("Proposed By", "")
+    you_done = scheduled and plan.get("Owner Done" if role == "owner" else "Requester Done") == "yes"
+    they_done = scheduled and plan.get("Requester Done" if role == "owner" else "Owner Done") == "yes"
+    steps = [("You confirmed", you_done), (f"{other} confirmed", they_done)] if scheduled else []
+    outcome, tone = "", "good"
+    if done:
+        outcome = "Exchanged ✓ Both of you confirmed the handover."
+        if book["Exchange Type"] == "Sell":
+            amount = plan.get("Paid Amount") or (str(int(float(book["Price (Rs)"]))) if str(book["Price (Rs)"]) not in ("", "nan") else "")
+            outcome += f" · Paid ₹{amount}" if plan.get("Paid") == "yes" else f" · Payment of ₹{amount} not marked yet"
+        if book["Exchange Type"] == "Lend":
+            status = handover.lend_status(req, plan, handover.now_ist().date())
+            due = pd.to_datetime(req["Return Date"]).strftime("%-d %b")
+            outcome = {"Returned": "Returned ✓ The book is Available again.", "Overdue": f"Overdue: was due back on {due}.",
+                       "Due soon": f"On loan · due back on {due} (in 2 days or less)."}.get(status, f"On loan · due back on {due}.")
+            tone = {"Overdue": "bad", "Due soon": "warn"}.get(status, "good")
+    elif scheduled and you_done:
+        outcome, tone = f"Waiting for {other} to confirm. The book stays Reserved until then.", "warn"
+    with st.container(key=f"handover_{request_id}"):
+        st.markdown(handover_card_html(plan_text, where, proposer, steps, outcome, tone), unsafe_allow_html=True)
+        kind, text = st.session_state.pop(f"handover_msg_{request_id}", (None, None))
+        if kind == "error":
+            st.warning(text)
+        elif kind == "success":
+            st.success(text)
+        if not done:
+            if scheduled and not you_done:
+                st.button("✓ Handover done", key=f"confirm_{request_id}", use_container_width=True,
+                          on_click=confirm_handover, args=(request_id,))
+            with st.expander("Change point or time" if scheduled else "Choose point and time", expanded=not scheduled):
+                with st.form(f"plan_{request_id}", border=False):
+                    names = handover.handover_point_names()
+                    point = st.selectbox("Handover point *", names, index=names.index(plan["Point"]) if scheduled else None,
+                                         placeholder="Choose an approved campus point")
+                    day_col, time_col = st.columns(2)
+                    with day_col:
+                        day = st.date_input("Date *", value=None, min_value=handover.now_ist().date(), format="DD/MM/YYYY")
+                    with time_col:
+                        at = st.time_input("Time *", value=None, step=900)
+                    st.caption("Approved points only, between 8:00 am and 8:00 pm. Changing the plan clears both confirmations.")
+                    if st.form_submit_button("Save handover plan", use_container_width=True):
+                        error = handover.check_schedule(point, day, at)
+                        if error:
+                            _handover_message(request_id, "error", error)
+                        else:
+                            handover.save_schedule(request_id, point, day, at, user)
+                            handover.send_message(request_id, user, f"Planned the handover: {point}, "
+                                                  f"{day.strftime('%-d %b')} at {at.strftime('%-I:%M %p').lower()}.")
+                            _handover_message(request_id, "success", "Handover plan saved. Both of you can see it.")
+                        st.rerun()
+        elif role == "owner" and book["Exchange Type"] == "Sell" and plan.get("Paid") != "yes":
+            st.button("Mark Paid", key=f"paid_{request_id}", use_container_width=True, on_click=mark_paid, args=(request_id,))
+        elif role == "owner" and book["Exchange Type"] == "Lend" and plan.get("Returned") != "yes":
+            st.button("Mark Returned", key=f"returned_{request_id}", use_container_width=True,
+                      on_click=mark_returned, args=(request_id,))
+        messages = handover.load_messages(request_id)
+        with st.expander(f"Messages with {other} ({len(messages)})", expanded=False):
+            for _, m in messages.iterrows():
+                sent = pd.to_datetime(m["Sent At"], errors="coerce")
+                st.markdown(message_html(m["Sender"], m["Text"], sent.strftime("%-d %b, %-I:%M %p").replace("AM", "am").replace("PM", "pm")
+                                         if pd.notna(sent) else "", m["Sender"].lower() == user.lower()), unsafe_allow_html=True)
+            with st.form(f"msg_{request_id}", clear_on_submit=True, border=False):
+                text = st.text_input("Message", max_chars=handover.MAX_MESSAGE, placeholder="e.g. Can we meet at 5 pm instead?",
+                                     label_visibility="collapsed")
+                if st.form_submit_button("Send", use_container_width=True):
+                    error = handover.check_message(text)
+                    if error:
+                        _handover_message(request_id, "error", error)
+                    else:
+                        handover.send_message(request_id, user, text)
+                    st.rerun()
+
+
 # ---------- Page flow ----------
 
 if "user" not in st.session_state:
@@ -705,5 +915,7 @@ else:
         wishlist_page()
     elif page == "help":
         help_page()
+    elif page == "coordinator":
+        coordinator_page()
     else:
         browse_page()
