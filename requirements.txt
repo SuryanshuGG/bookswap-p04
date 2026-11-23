@@ -1,4 +1,4 @@
-# restart: Google Sheet status message (23 Nov)
+# restart: recheck Google Sheet connection (23 Nov)
 streamlit==1.66.1
 pandas==3.0.5
 openpyxl==3.1.5
