@@ -26,6 +26,8 @@ from bookswap import handover
 from bookswap import reviews
 from bookswap import donations
 from bookswap import ratings
+from bookswap import auth
+from bookswap.users import save_email
 from bookswap.listings import load_books
 from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
@@ -44,7 +46,57 @@ st.markdown(PAGE_CSS, unsafe_allow_html=True)
 
 # ---------- Sign-in and sign-up (uses the Users sheet) ----------
 
+def verified_sign_in_form(users) -> None:
+    """Email and password, verified email only (BS-40, P04-US09 criteria 7 and 8)."""
+    with st.form("sign_in_verified"):
+        email = st.text_input("College email", placeholder="name@xime.org")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+    if submitted:
+        error, verified, token = auth.sign_in(email, password)
+        if error:
+            st.error(error)
+            return
+        if not verified:
+            st.session_state["resend_token"], st.session_state["resend_email"] = token, email.strip().lower()
+            st.error(auth.MESSAGES["unverified"].format(email=email.strip().lower()))
+            return
+        name = auth.name_for_email(email, users)
+        if not name:
+            st.error(auth.MESSAGES["not_on_list"])
+            return
+        st.session_state["user"] = name
+        st.rerun()
+    if st.session_state.get("resend_token"):
+        if st.button("Resend verification email", key="resend_verify"):
+            error = auth.resend_verification(st.session_state["resend_token"])
+            (st.error if error else st.success)(error or auth.MESSAGES["resent"].format(email=st.session_state["resend_email"]))
+
+
+def verified_sign_up_form(users) -> None:
+    """Approved students only, with a verification email (BS-40, P04-US09 criteria 7 and 9)."""
+    with st.form("sign_up_verified"):
+        name = st.text_input("Full name (as on the class list)", placeholder="e.g. Ananya Sharma")
+        roll = st.text_input("Roll number", placeholder="e.g. 31106")
+        email = st.text_input("College email", placeholder="name@xime.org", key="verified_email")
+        password = st.text_input(f"Password (at least {auth.MIN_PASSWORD} characters)", type="password")
+        submitted = st.form_submit_button("Create account")
+    if submitted:
+        error = auth.check_sign_up(name, roll, email, password, users) or auth.create_account(email, password)
+        if error:
+            st.error(error)
+            return
+        save_email(name, email)
+        st.session_state["auth_step"] = "signin"
+        st.session_state["auth_notice"] = auth.MESSAGES["check_inbox"].format(email=email.strip().lower())
+        st.rerun()
+
+
 def sign_in_form(users) -> None:
+    if auth.enabled():
+        verified_sign_in_form(users)
+        return
+    st.caption("Email verification switches on once Firebase is set up.")
     with st.form("sign_in"):
         name = st.selectbox("Your name", users["Name"].tolist(), index=None,
                             placeholder="Start typing your name")
@@ -68,6 +120,9 @@ def storage_note() -> None:
 
 
 def sign_up_form(users) -> None:
+    if auth.enabled():
+        verified_sign_up_form(users)
+        return
     if not is_permanent():
         st.caption("Test mode: new accounts are kept only until the app restarts.")
         storage_note()
@@ -128,6 +183,9 @@ def auth_page(mode: str) -> None:
     with form, st.container(key="auth_card"):
         st.button("← Back", key="auth_back", on_click=go_auth, args=("splash",))
         st.markdown(auth_heading_html(mode), unsafe_allow_html=True)
+        notice = st.session_state.pop("auth_notice", None)
+        if notice:
+            st.success(notice)
         if mode == "signup":
             sign_up_form(users)
             st.button("Already have an account? Sign in", key="auth_switch", on_click=go_auth, args=("signin",))

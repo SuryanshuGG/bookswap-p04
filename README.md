@@ -18,19 +18,43 @@ BookSwap lets students list, find and request books from each other on campus.
 | Suranjana | Content |
 | Swasti | Designer |
 
-## What works so far
+## The problem
 
-| Jira | Story | Status |
-|---|---|---|
-| BS-5 | P04-US01 Load 40 sample book listings: sign in, book list with cover and title, placeholder for missing covers, book details | Done |
-| BS-55 | Sign-up for new students with name and college email (saved to the Google Sheet) | Done |
-| BS-27 | P04-US03 Search books by title or author, with a wishlist message when nothing matches | Done |
-| BS-28 | Search tested: TC05-TC08 all passed (`docs/testing/BS-28_Search_Test_Results.xlsx`) | Done |
-| BS-25 | P04-US02 List a book with photo, condition and exchange type; saved under the owner as Available | Done |
-| BS-36 | P04-US07 Accept or Decline requests on My Listings: book becomes Reserved, other requests declined, return date for Lend, collect note for Sell, badges | In review |
-| BS-56 | P04-US07 My Listings: edit condition, exchange type and price, pause or delete a listing | In review |
-| BS-31 | P04-US05 Request a book: Request button with its four states, swap offer of one of my books, pay-at-handover note for Sell, Request sent screen, My Requests | Done |
-| BS-30 | P04-US04 Filter books by course, genre and exchange type (Swap, Lend, Sell), alone, together or with search; Clear filters; no-match message | Done |
+Course books at XIME are used for one term and then sit on a shelf, while juniors buy the same titles new.
+BookSwap lets students swap, lend, sell or donate those books to each other on campus, safely and only with verified XIME accounts.
+
+## Stories delivered (15 of 15)
+
+| Story | What it does | Where to see it in the app | Tested in |
+|---|---|---|---|
+| P04-US01 Load 40 sample books | 40 books with covers, details and owner | Browse books | Sprint 1 |
+| P04-US02 List a book | Photo, condition, Swap / Lend / Sell (price for Sell) | + List a book | TC01-TC04 |
+| P04-US03 Search | Title or author, part words, any capitals | Search box on Browse | TC05-TC08 |
+| P04-US04 Filter | Course, genre and exchange type, alone or together | Filters on Browse | TC13 |
+| P04-US05 Request a book | Swap offer, pay-at-handover note, My Requests | View details → Request this book | TC09-TC12, TC14-TC16 |
+| P04-US06 Test listing, search and request | Sprint 1 test sheet | `docs/testing/` | TC01-TC18 |
+| P04-US07 Accept or decline | Reserved, return date for Lend, edit / pause / delete | My Listings | TC17-TC18 |
+| P04-US08 Campus handover | Approved points, future time, messages, both confirm → Exchanged, Paid, return reminder, Returned | Handover card under an accepted request | TC33-TC36 |
+| P04-US09 Rate, report, verified sign-in | Rate once after an exchange, profile average, Report, Firebase email verification | Handover card, My profile, Report this listing, Sign in | TC37-TC41 |
+| P04-US10 Wishlist | Save a book, Now Available match, badge | Wishlist | TC19-TC22 |
+| P04-US11 Guidelines and how-to | Fair pricing, condition, safe meeting, approved points, 5 steps | Help | Coordinator approval |
+| P04-US12 Usability test | Six students, task script and results | `docs/usability/` | BS-47, BS-48 |
+| P04-US13 Reading circle announcements | Coordinator posts; home screen, soonest first; past events hidden | Home screen, Coordinator | TC23-TC25 |
+| P04-US14 Donate a book | Donate, can't be requested, coordinator Received, withdraw | My Listings, Coordinator | TC29-TC32 |
+| P04-US15 Peer reviews | Stars, 100 words, one review per student | View details → Reviews | TC26-TC28 |
+
+## Try it (demo accounts)
+
+- Students: sign in with your name and @xime.org email (or email and password once Firebase is on).
+- Coordinator tools: sign in as Chandana (Product Owner) and tap **Coordinator**.
+- Data is saved in the team's Google Sheet: Books, Users, Requests, Wishlist, Announcements, Handovers, Messages, Reviews, Donations, Ratings and Reports tabs.
+
+## Switch on email verification (US09 criteria 7 to 9)
+
+1. In the Firebase console, open the project → **Authentication → Sign-in method** → enable **Email/Password**.
+2. In **Project settings → General**, copy the **Web API key**.
+3. In Streamlit → app **Settings → Secrets**, add one line: `firebase_api_key = "the key"` and save.
+4. Make sure each student's name (and roll number, in a **Roll Number** column) is on the Users tab. Sign-up is refused for anyone else.
 
 ## Run it on your own computer
 
@@ -48,11 +72,16 @@ BookSwap lets students list, find and request books from each other on campus.
 - `bookswap/filters.py`: course and genre filters
 - `bookswap/requests.py`: request rules, swap offers and saving requests
 - `bookswap/listings.py`: the listing rules, and reading and saving books
+- `bookswap/handover.py`, `ratings.py`, `auth.py`: handover, rating and report, verified sign-in (Sprint 2)
+- `bookswap/wishlist.py`, `reviews.py`, `donations.py`, `announcements.py`, `help.py`: the other Sprint 2 stories
+- `bookswap/sheet_tabs.py`: shared saving for the Sprint 2 Google Sheet tabs
 - `tests/`: automatic checks (run `python -m pytest tests`)
 - `data/BookSwap_40_Books.xlsx`: the 40 sample books, users and lists
 - `docs/ai-usage-log.md`: what was written with AI help, task by task
 - `docs/screenshots/`: screenshots attached to each pull request
-- `docs/testing/`: test sheets with recorded results
+- `docs/testing/`: test sheets with recorded results (Sprint 1 TC01-TC18, Sprint 2 TC19-TC41)
+- `docs/usability/`: usability task script and recording sheet
+- `docs/po-acceptance.md`: how the Product Owner accepted each story
 
 ## Working rules
 
