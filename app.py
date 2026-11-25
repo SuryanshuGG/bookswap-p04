@@ -23,6 +23,9 @@ from bookswap import help as book_help
 from bookswap import wishlist
 from bookswap import announcements
 from bookswap import handover
+from bookswap import reviews
+from bookswap import donations
+from bookswap import ratings
 from bookswap.listings import load_books
 from bookswap.filters import NO_FILTER_MATCH_MESSAGE, filter_books
 from bookswap.search import NO_MATCH_MESSAGE, search_books
@@ -31,6 +34,7 @@ from bookswap.ui import (
     hero_html, listed_html, listing_header_html, note_html, owner_request_html, request_label_html, request_row_html, request_sent_html,
     section_title_html, user_badge_html, splash_html, onboarding_html, auth_heading_html, auth_panel_html,
     help_page_html, wish_row_html, announcements_html, handover_card_html, message_html,
+    rating_line_html, review_html, profile_html,
 )
 from bookswap.users import add_user, check_sign_in, check_sign_up, is_permanent, load_users
 
@@ -151,7 +155,11 @@ def show_details(book) -> None:
         st.markdown(cover_html(book, max_width=280, radius=16), unsafe_allow_html=True)
     with right:
         st.markdown(details_html(book), unsafe_allow_html=True)
+        avg, count = ratings.average(ratings.load(), book["Owner Name"])
+        st.markdown(rating_line_html(book["Owner Name"], avg, count), unsafe_allow_html=True)
         request_section(book)
+    reviews_section(book)
+    report_section(book)
 
 
 # ---------- Request a book (BS-31, story P04-US05) ----------
@@ -165,6 +173,10 @@ def request_section(book) -> None:
         st.markdown(request_label_html("This is your book", book_requests.MESSAGES["own"], mint=True), unsafe_allow_html=True)
         return
     if state == "unavailable":
+        if book["Status"] == "Donated":  # BS-51, US14 criterion 3
+            st.markdown(request_label_html("Donated to the library", donations.MESSAGES["unavailable_to_others"]),
+                        unsafe_allow_html=True)
+            return
         st.markdown(request_label_html("Not available", book_requests.MESSAGES["unavailable"]), unsafe_allow_html=True)
         return
     if state == "requested":
@@ -325,7 +337,9 @@ def top_bar() -> None:
             go_to("help")
     with right:
         st.markdown(user_badge_html(st.session_state["user"]), unsafe_allow_html=True)
-        # Coordinator tools: announcements now, donations and reports later (US13, US14, US09)
+        if st.button("My profile", key="nav_profile", use_container_width=True):
+            go_to("profile")
+        # Coordinator tools: announcements, donations and reports (US13, US14, US09)
         if announcements.is_coordinator(user, load_users()):
             if st.button("Coordinator", key="nav_coordinator", use_container_width=True):
                 go_to("coordinator")
@@ -459,6 +473,24 @@ def my_listings_page() -> None:
                                 listings.update_book(book_id, changes)
                                 st.session_state["listing_message"] = ("success", f"Deleted {book['Title']}.")
                             st.rerun()
+                if book["Status"] == "Available":
+                    # Donate to the department library (BS-51, US14 criterion 1)
+                    if st.button("Donate to the library", key=f"donate_{book_id}", use_container_width=True):
+                        error, message, changes = donations.donate(book, user, has_pending)
+                        if not error:
+                            listings.update_book(book_id, changes)
+                        st.session_state["listing_message"] = ("error", error) if error else ("success", message)
+                        st.rerun()
+                elif book["Status"] == "Donated":
+                    st.caption("Donated · waiting for the coordinator to collect it. You can withdraw until then.")
+                    if st.button("Withdraw donation", key=f"withdraw_{book_id}", use_container_width=True):
+                        error, message, changes = donations.withdraw(book, user)
+                        if not error:
+                            listings.update_book(book_id, changes)
+                        st.session_state["listing_message"] = ("error", error) if error else ("success", message)
+                        st.rerun()
+                elif book["Status"] == "Closed":
+                    st.caption("Received by the department library. This listing is closed.")
 
 
 def browse_page() -> None:
@@ -725,8 +757,8 @@ def coordinator_page() -> None:
     _, middle, _ = st.columns([1, 3, 1])
     with middle:
         st.markdown("<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 4px'>Coordinator</div>"
-                    "<div style='color:#5F6368;font-size:15px;margin-bottom:14px'>Literary club tools: reading circle "
-                    "announcements.</div>", unsafe_allow_html=True)
+                    "<div style='color:#5F6368;font-size:15px;margin-bottom:14px'>Literary club tools: donations, reports and "
+                    "reading circle announcements.</div>", unsafe_allow_html=True)
         if not announcements.is_coordinator(user, users):  # criterion 5
             st.warning(announcements.MESSAGES["not_coordinator"])
             return
@@ -752,6 +784,8 @@ def coordinator_page() -> None:
             st.warning(text)
         elif kind == "success":
             st.success(text)
+        donations_section()
+        reports_section()
         upcoming = announcements.live(announcements.load())
         st.markdown(section_title_html("Live announcements", f"{len(upcoming)} shown to students · past events hide automatically"),
                     unsafe_allow_html=True)
@@ -878,6 +912,8 @@ def handover_panel(request_id: str) -> None:
         elif role == "owner" and book["Exchange Type"] == "Lend" and plan.get("Returned") != "yes":
             st.button("Mark Returned", key=f"returned_{request_id}", use_container_width=True,
                       on_click=mark_returned, args=(request_id,))
+        if done:
+            rating_section(request_id, other, role)
         messages = handover.load_messages(request_id)
         with st.expander(f"Messages with {other} ({len(messages)})", expanded=False):
             for _, m in messages.iterrows():
@@ -894,6 +930,138 @@ def handover_panel(request_id: str) -> None:
                     else:
                         handover.send_message(request_id, user, text)
                     st.rerun()
+
+
+# ---------- Peer reviews (BS-53, story P04-US15) ----------
+
+def reviews_section(book) -> None:
+    user = st.session_state["user"]
+    rows = reviews.for_title(reviews.load(), book["Title"])
+    avg, count = reviews.summary(rows)
+    head = (f"Reviews · ★ {avg} from {count} review{'s' if count != 1 else ''}" if count else "Reviews")
+    st.markdown(f"<div style='font-size:18px;font-weight:800;margin-top:14px'>{head}</div>", unsafe_allow_html=True)
+    if rows.empty:
+        st.markdown(f"<div style='color:#5F6368;margin:4px 0 8px'>{reviews.MESSAGES['none']}</div>", unsafe_allow_html=True)
+    for _, r in rows.iterrows():
+        when = pd.to_datetime(r["Date"], errors="coerce")
+        st.markdown(review_html(r["Student"], r["Stars"], r["Review"], when.strftime("%-d %b") if pd.notna(when) else r["Date"]),
+                    unsafe_allow_html=True)
+    mine = reviews.mine(reviews.load(), book["Title"], user)
+    with st.expander("Edit your review" if mine else "Write a review", expanded=False):
+        stars = st.feedback("stars", key=f"rv_stars_{book['Book ID']}")
+        if mine and stars is None:
+            st.caption(f"Your current rating: {int(mine['Stars'])} of 5")
+        text = st.text_area(f"Your review (up to {reviews.MAX_WORDS} words) *", value=mine["Review"] if mine else "",
+                            key=f"rv_text_{book['Book ID']}", height=90)
+        st.caption(f"{reviews.word_count(text)} / {reviews.MAX_WORDS} words")
+        if st.button("Update review" if mine else "Post review", key=f"rv_post_{book['Book ID']}", use_container_width=True):
+            value = stars + 1 if stars is not None else (int(mine["Stars"]) if mine else None)
+            error, message = reviews.save(book["Title"], user, value, text)
+            (st.warning if error else st.success)(error or message)
+
+
+def report_section(book) -> None:
+    """Report a wrong listing or a student (BS-40, US09 criterion 6)."""
+    user = st.session_state["user"]
+    if str(book["Owner Name"]).lower() == user.lower():
+        return
+    with st.expander("⚑ Report this listing", expanded=False):
+        reason = st.radio("Reason *", ratings.REASONS, index=None, key=f"rp_reason_{book['Book ID']}")
+        details = st.text_area("Details (optional)", key=f"rp_details_{book['Book ID']}", max_chars=300, height=70)
+        if st.button("Send report", key=f"rp_send_{book['Book ID']}", use_container_width=True):
+            error = ratings.report(user, book["Owner Name"], book["Book ID"], book["Title"], reason, details)
+            (st.warning if error else st.success)(error or ratings.MESSAGES["reported"])
+        st.caption("The literary club coordinator sees every report. The other student isn't told who reported.")
+
+
+# ---------- Rate my exchange partner (BS-40, story P04-US09) ----------
+
+def rating_section(request_id: str, other: str, role: str) -> None:
+    user = st.session_state["user"]
+    existing = ratings.my_rating(ratings.load(), request_id, user)
+    if existing:
+        st.markdown(f"<div style='font-size:14px;margin:4px 0'>You rated <b>{other}</b> "
+                    f"<span style='color:#B7791F;letter-spacing:1px'>{'★' * int(existing['Stars'])}{'☆' * (5 - int(existing['Stars']))}</span>"
+                    f" · 🔒 one rating per exchange</div>", unsafe_allow_html=True)
+        return
+    st.markdown(f"<div style='font-weight:800;margin-top:6px'>How was your exchange with {other}?</div>", unsafe_allow_html=True)
+    stars = st.feedback("stars", key=f"rate_{request_id}")
+    if st.button("Submit rating", key=f"rate_send_{request_id}", use_container_width=True):
+        error = ratings.rate(request_id, user, other, stars + 1 if stars is not None else None, True, role is not None)
+        _handover_message(request_id, "error" if error else "success", error or ratings.MESSAGES["rated"])
+        st.rerun()
+
+
+def profile_page() -> None:
+    user = st.session_state["user"]
+    users, books = load_users(), load_books()
+    role = users.loc[users["Name"].str.lower() == user.lower(), "Role"]
+    avg, count = ratings.average(ratings.load(), user)
+    listed = int((books["Owner Name"].str.lower() == user.lower()).sum())
+    done = handover.load()
+    exchanges = 0
+    if not done.empty:
+        both = done[(done["Owner Done"] == "yes") & (done["Requester Done"] == "yes")]
+        requests = book_requests.load_requests()
+        ids = set(both["Request ID"])
+        mine = requests[requests["Request ID"].isin(ids)]
+        owners = dict(zip(books["Book ID"], books["Owner Name"].str.lower()))
+        exchanges = int(sum(1 for _, r in mine.iterrows()
+                            if r["Requester Name"].lower() == user.lower() or owners.get(r["Book ID"]) == user.lower()))
+    _, middle, _ = st.columns([1, 2, 1])
+    with middle:
+        st.markdown("<div style='font-size:28px;font-weight:800;letter-spacing:-0.6px;margin:10px 0 12px'>My profile</div>",
+                    unsafe_allow_html=True)
+        st.markdown(profile_html(user, role.iloc[0] if not role.empty else "Student", avg, count, listed, exchanges),
+                    unsafe_allow_html=True)
+        st.caption("Other students see your average rating on every book you list.")
+
+
+# ---------- Coordinator lists: donations (BS-51) and reports (BS-40) ----------
+
+def receive_donation(donation_id: str, book_id: str) -> None:
+    error, message, changes = donations.mark_received(donation_id, announcements.is_coordinator(st.session_state["user"], load_users()))
+    if not error:
+        listings.update_book(book_id, changes)
+    st.session_state["coord_message"] = ("error", error) if error else ("success", message)
+
+
+def donations_section() -> None:
+    rows = donations.coordinator_list(donations.load())
+    st.markdown(section_title_html("Donations to collect", f"{len(rows)} waiting · mark Received to close the listing"),
+                unsafe_allow_html=True)
+    if rows.empty:
+        st.caption("No donations waiting.")
+    for _, d in rows.iterrows():
+        offered = pd.to_datetime(d["Offered On"], errors="coerce")
+        info, action = st.columns([3, 1], vertical_alignment="center")
+        with info:
+            st.markdown(f"<div style='background:#FFFFFF;border-radius:14px;padding:10px 14px'><b>{d['Book Title']}</b>"
+                        f"<div style='font-size:13.5px;color:#5F6368'>Donated by {d['Donor']} · offered "
+                        f"{offered.strftime('%-d %b %Y') if pd.notna(offered) else d['Offered On']}</div></div>",
+                        unsafe_allow_html=True)
+        with action:
+            st.button("Received", key=f"recv_{d['Donation ID']}", use_container_width=True, on_click=receive_donation,
+                      args=(d["Donation ID"], d["Book ID"]))
+
+
+def reports_section() -> None:
+    rows = ratings.load_reports()
+    open_rows = rows[rows["Status"] == "Open"] if not rows.empty else rows
+    st.markdown(section_title_html("Reports", f"{len(open_rows)} open"), unsafe_allow_html=True)
+    if open_rows.empty:
+        st.caption("No open reports.")
+    for _, r in open_rows.iterrows():
+        info, action = st.columns([3, 1], vertical_alignment="center")
+        with info:
+            st.markdown(f"<div style='background:#FFFFFF;border-radius:14px;padding:10px 14px'><b>{r['Reason']}</b>"
+                        f"<div style='font-size:13.5px;color:#5F6368'>About {r['About Student']} · {r['About Book']} · "
+                        f"reported {pd.to_datetime(r['Date']).strftime('%-d %b %Y')}</div>"
+                        + (f"<div style='font-size:13.5px;margin-top:4px'>{r['Details']}</div>" if r["Details"] else "")
+                        + "</div>", unsafe_allow_html=True)
+        with action:
+            st.button("Close", key=f"close_{r['Report ID']}", use_container_width=True, on_click=ratings.close_report,
+                      args=(r["Report ID"],))
 
 
 # ---------- Page flow ----------
@@ -917,5 +1085,7 @@ else:
         help_page()
     elif page == "coordinator":
         coordinator_page()
+    elif page == "profile":
+        profile_page()
     else:
         browse_page()

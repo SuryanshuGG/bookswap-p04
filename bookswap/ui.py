@@ -37,6 +37,8 @@ STATUS_STYLES = {
     "Reserved": ("#FFF1D6", "#8A5300"),
     "Exchanged": ("#ECEDEF", "#4A4F57"),
     "Paused": ("#ECEDEF", "#4A4F57"),
+    "Donated": ("#E3E8FD", "#2E3F8F"),
+    "Closed": ("#ECEDEF", "#4A4F57"),
 }
 
 BOOK_ICON = (
@@ -717,3 +719,44 @@ def message_html(sender: str, text: str, when: str, mine: bool) -> str:
     return (f"<div style='display:flex;justify-content:{side};margin:4px 0'><div style='max-width:80%;background:{bg};"
             f"border-radius:14px;padding:8px 12px'><div style='font-size:12px;color:{MUTED}'>{html.escape(sender)} · "
             f"{html.escape(when)}</div><div style='font-size:14.5px;color:{INK}'>{html.escape(text)}</div></div></div>")
+
+
+# ---------- Ratings and reviews (P04-US09, P04-US15) ----------
+
+def stars_text(value) -> str:
+    """'★★★★☆' for 4 (rounded)."""
+    n = int(round(float(value))) if value not in (None, "") else 0
+    return "★" * n + "☆" * (5 - n)
+
+
+def rating_line_html(name: str, avg, count: int, label: str = "Listed by") -> str:
+    """Criteria 2 and 5 of P04-US09: average rating, or No ratings yet."""
+    score = (f"<span style='color:#B7791F;letter-spacing:1px'>{stars_text(avg)}</span> "
+             f"<b>{avg}</b> <span style='color:{MUTED}'>({count} rating{'s' if count != 1 else ''})</span>") if count else (
+             f"<span style='color:{MUTED}'>No ratings yet</span>")
+    return (f"<div style='font-size:14px;margin:10px 0 2px;color:{INK}'>"
+            f"<b>{html.escape(name)}</b>'s exchange rating · {score}</div>")
+
+
+def review_html(student: str, stars, text: str, when: str) -> str:
+    return (f"<div style='border-top:1px solid #E3E6EA;padding:10px 0'>"
+            f"<div style='font-size:13.5px'><b>{html.escape(student)}</b> "
+            f"<span style='color:#B7791F;letter-spacing:1px'>{stars_text(stars)}</span> "
+            f"<span style='color:{MUTED}'>· {html.escape(when)}</span></div>"
+            f"<div style='font-size:14.5px;color:#333333;margin-top:2px'>{html.escape(text)}</div></div>")
+
+
+def profile_html(name: str, role: str, avg, count: int, listed: int, exchanges: int) -> str:
+    score = (f"<div style='font-size:40px;font-weight:800;letter-spacing:-1px'>{avg}</div>"
+             f"<div><div style='color:#B7791F;font-size:20px;letter-spacing:2px'>{stars_text(avg)}</div>"
+             f"<div style='color:{MUTED};font-size:13.5px'>from {count} rating{'s' if count != 1 else ''}</div></div>") if count else (
+             f"<div style='color:{MUTED};font-size:16px;font-weight:600'>No ratings yet</div>")
+    stat = lambda n, label: (f"<div style='flex:1;background:{FIELD};border-radius:14px;padding:10px;text-align:center'>"
+                             f"<div style='font-size:20px;font-weight:800'>{n}</div><div style='font-size:12.5px;color:{MUTED}'>{label}</div></div>")
+    return (f"<div style='background:#FFFFFF;border-radius:20px;padding:22px;text-align:center'>"
+            f"<div style='width:62px;height:62px;border-radius:31px;background:{MINT_SOFT};color:{GREEN};font-weight:800;font-size:24px;"
+            f"display:flex;align-items:center;justify-content:center;margin:0 auto 8px'>{html.escape(name[:1].upper())}</div>"
+            f"<div style='font-size:21px;font-weight:800'>{html.escape(name)}</div>"
+            f"<div style='color:{MUTED};font-size:13.5px'>{html.escape(role)} · XIME Bangalore</div>"
+            f"<div style='display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px'>{score}</div>"
+            f"<div style='display:flex;gap:10px;margin-top:16px'>{stat(listed, 'books listed')}{stat(exchanges, 'exchanges')}</div></div>")
