@@ -15,7 +15,7 @@ import streamlit as st
 
 from bookswap.data import load_users as load_users_from_excel
 
-USER_COLUMNS = ["Name", "Role", "College Email"]
+USER_COLUMNS = ["Name", "Role", "College Email", "Roll Number"]  # Roll Number is optional
 COLLEGE_DOMAIN = "xime.org"
 _EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
@@ -119,8 +119,11 @@ def load_users() -> pd.DataFrame:
     if worksheet is not None:
         return clean_users(pd.DataFrame(worksheet.get_all_records()))
     users = clean_users(load_users_from_excel())
-    extra = pd.DataFrame(_temporary_sign_ups(), columns=USER_COLUMNS)
-    return pd.concat([users, extra], ignore_index=True)
+    extra = pd.DataFrame([(list(r) + [""] * 4)[:4] for r in _temporary_sign_ups()], columns=USER_COLUMNS)
+    users = pd.concat([users, extra], ignore_index=True)
+    for name, email in _temporary_emails().items():  # emails saved by verified sign-up in test mode
+        users.loc[users["Name"].str.lower() == name, "College Email"] = email
+    return users
 
 
 def add_user(name: str, email: str) -> None:
@@ -131,3 +134,26 @@ def add_user(name: str, email: str) -> None:
         worksheet.append_row(row, value_input_option="RAW")
     else:
         _temporary_sign_ups().append(row)
+
+
+@st.cache_resource(show_spinner=False)
+def _temporary_emails() -> dict:
+    return {}
+
+
+def save_email(name: str, email: str) -> None:
+    """Records an approved student's verified college email on the Users list (P04-US09 criterion 7)."""
+    email = email.strip().lower()
+    worksheet = None
+    try:
+        worksheet = _users_worksheet()
+    except Exception:
+        worksheet = None
+    if worksheet is None:
+        _temporary_emails()[name.strip().lower()] = email
+        return
+    header = worksheet.row_values(1)
+    column = header.index("College Email") + 1 if "College Email" in header else 3
+    names = [n.strip().lower() for n in worksheet.col_values(1)]
+    if name.strip().lower() in names:
+        worksheet.update_cell(names.index(name.strip().lower()) + 1, column, email)
