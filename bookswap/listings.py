@@ -199,7 +199,7 @@ def _temporary_changes() -> dict:
     return {}
 
 
-HIDDEN_STATUSES = ("Paused", "Deleted")  # not shown when browsing (BS-56)
+HIDDEN_STATUSES = ("Paused", "Deleted", "Closed")  # not shown when browsing (BS-56; Closed = donation received, BS-51)
 
 
 def load_books() -> pd.DataFrame:
